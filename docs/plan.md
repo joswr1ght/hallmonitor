@@ -155,7 +155,7 @@ declared as `uv` inline dependencies) behind the Apache and certbot setup alread
 | Method and path | Auth | Purpose |
 |---|---|---|
 | `POST /api/v1/readings` | kit token | Batch upload of queued readings, plus the kit's course, instructor, and sensor when they change |
-| `GET /api/v1/config` | kit token | Wi-Fi list for this kit (not built yet) |
+| `GET /api/v1/config` | kit token | The Wi-Fi list, which kits merge into their own |
 | `GET /api/v1/rooms` | staff | Kits that reported in the past 24 hours, for the drop-down |
 | `GET /api/v1/rooms/{id}/readings?since=` | staff | Readings for charts and a future Slack bot |
 | `GET /rooms` and `/rooms/{id}` | staff | The rendered staff page |
@@ -500,13 +500,23 @@ own display. After the instructor selects a sensor, the kit's screen shows that 
 reading as confirmation, and the change is reported to the server with the next upload so the
 device record stays current.
 
+**Recovering after a password change**
+
+When SANS changes class network passwords, the server-pushed list (`GET /api/v1/config`) updates
+every kit that can still get online. A kit whose networks all changed cannot reach the server to
+learn the new passwords. The portal is the way back: the instructor enters one working password,
+restarts the kit, and the kit connects, fetches the server's list, and picks up the rest. The
+network the instructor entered keeps the instructor's password from then on.
+
 **Implementation notes**
 
-Libraries such as WiFiManager for the Arduino core provide the captive portal, DNS redirect, and
-network scan, and can be customized with additional pages. The ESP32 shares one radio between BLE
-and Wi-Fi (H8), so the prototype should test whether BLE scanning can continue at a reduced duty
-cycle while the portal runs, to keep the sensor list's readings fresh. If it cannot, the
-15-minute table from normal operation is still enough to pick a sensor.
+The portal is written with the Arduino core's `WebServer` and `DNSServer` instead of WiFiManager,
+since the pages are custom. BLE scanning keeps running while the portal is up, so the sensor list
+stays fresh; the prototype should confirm the radio handles both (H8). Testing a password can move
+the radio to the tested network's channel, which briefly drops the phone from the portal network.
+
+The kit reports its label and sensor with every upload, but not portal changes to its Wi-Fi list.
+Josh learns about a new network from the instructor, not from the server, for now.
 
 ## Phased plan
 
@@ -548,8 +558,10 @@ splits into milestones that can each be tested on the board:
 5. The setup portal (F1).
 6. Over-the-air (OTA) updates, before Phase 3.
 
-Milestones 1 to 4 are written. The firmware compiles and `provision.py` passed a test against a
-simulated kit on a pseudo-terminal, but both still need to run on the board.
+Milestones 1 to 5 are written. The firmware compiles and `provision.py` passed a test against a
+simulated kit on a pseudo-terminal, but none of it has run on the board. The firmware leaves about
+500 bytes of instruction RAM (IRAM) free, so OTA updates (milestone 6) may need a newer Arduino
+core or an ESP-IDF build to make room.
 
 **Phase 3: pilot with two or three instructors**
 

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <vector>
 
 struct Network {
@@ -28,5 +29,8 @@ void loadConfig();
 void saveConfig();
 // True when the kit has everything it needs to report: server, token, sensor, and a network.
 bool configComplete();
+// Replace the networks that came from provisioning or the server with `incoming`, keeping every
+// network an instructor set in the setup portal. Returns true if the list changed.
+bool mergeNetworks(JsonArrayConst incoming);
 // Handle one line from the USB serial port. See firmware/README.md for the commands.
 void handleSerialCommand(const String& line);

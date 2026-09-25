@@ -58,22 +58,27 @@ bool configComplete() {
            !config.networks.empty();
 }
 
-// Replace the networks that came from provisioning or the server with `incoming`, keeping every
-// network an instructor added or edited in the setup portal. Instructor entries win on a
-// conflicting SSID, since the instructor's changes are the source of truth for a deployed kit.
-static void mergeNetworks(JsonArray incoming) {
+// Instructor entries win on a conflicting SSID, since the instructor's changes are the source of
+// truth for a deployed kit.
+bool mergeNetworks(JsonArrayConst incoming) {
     std::vector<Network> merged;
     for (auto& n : config.networks) {
         if (n.instructor) merged.push_back(n);
     }
-    for (JsonObject n : incoming) {
+    for (JsonObjectConst n : incoming) {
         String ssid = n["ssid"] | "";
         if (ssid.isEmpty()) continue;
         bool taken = false;
         for (auto& m : merged) taken |= m.ssid == ssid;
         if (!taken) merged.push_back({ssid, n["psk"] | "", false});
     }
+    bool changed = merged.size() != config.networks.size();
+    for (size_t i = 0; !changed && i < merged.size(); i++) {
+        const Network &a = merged[i], &b = config.networks[i];
+        changed = a.ssid != b.ssid || a.psk != b.psk || a.instructor != b.instructor;
+    }
     config.networks = merged;
+    return changed;
 }
 
 static void reply(bool ok, const char* error = nullptr) {
@@ -149,7 +154,7 @@ void handleSerialCommand(const String& line) {
         if (doc["course"].is<const char*>()) config.course = doc["course"].as<const char*>();
         if (doc["instructor"].is<const char*>()) config.instructor = doc["instructor"].as<const char*>();
         if (doc["sensor"].is<const char*>()) config.sensor = doc["sensor"].as<const char*>();
-        if (doc["networks"].is<JsonArray>()) mergeNetworks(doc["networks"]);
+        if (doc["networks"].is<JsonArray>()) mergeNetworks(doc["networks"].as<JsonArrayConst>());
         saveConfig();
         reply(true);
     } else if (!command.isEmpty()) {

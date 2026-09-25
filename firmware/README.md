@@ -5,9 +5,9 @@ sensor over Bluetooth Low Energy (BLE), queues a reading every 5 minutes, joins 
 Wi-Fi network, and uploads batches to the server. The screen shows the current reading and the
 kit's status.
 
-Status: milestones 1 to 4 (screen, BLE decoding, uploads, and `provision.py`) are written. The
-firmware compiles and `provision.py` passed a test against a simulated kit, but neither has run on
-hardware yet. The setup portal and over-the-air (OTA) updates are not started. See Phase 2 in
+Status: milestones 1 to 5 (screen, BLE decoding, uploads, `provision.py`, and the setup portal)
+are written. The firmware compiles and `provision.py` passed a test against a simulated kit, but
+none of it has run on hardware yet. Over-the-air (OTA) updates are not started. See Phase 2 in
 [../docs/plan.md](../docs/plan.md).
 
 ## Toolchain
@@ -38,6 +38,7 @@ The first build downloads the ESP32 toolchain and takes a few minutes. The libra
 | `src/govee.*` | Continuous BLE scan and the Govee decoder table, ported from `client/hallclient.py` |
 | `src/reporter.*` | Wi-Fi, the clock, the readings queue, and HTTPS uploads |
 | `src/display.*` | The status screen |
+| `src/portal.*` | The setup portal |
 | `src/certs.h` | The Let's Encrypt root certificates the kit trusts |
 
 ## Provisioning a kit
@@ -97,6 +98,45 @@ The `networks` list replaces the networks that came from provisioning and keeps 
 instructor added or edited in the setup portal. Once a kit is deployed, the instructor's changes
 are the source of truth for that kit.
 
+## Setup portal
+
+Holding the main button for 3 seconds starts the setup portal. The kit beeps, stops uploading, and
+starts a Wi-Fi network named `hallmon-<kit ID>` with a random 8-character password. The screen
+shows a QR code that joins the network, the network name and password, and `192.168.4.1`. Phones
+usually open the setup page on their own after joining; otherwise, browse to `http://192.168.4.1`.
+
+The page has four sections:
+
+* **Status**: the label, the paired sensor's reading, the last upload, and the queued readings.
+* **Wi-Fi**: the saved networks with their signal strength, and a form to add a network or change
+  the password of a saved one. The kit tests the password before saving; a checkbox saves it anyway
+  for a network that is out of range. Networks set here are marked on the kit, and the server's
+  list never replaces them.
+* **Sensor**: every Govee sensor heard in the past 15 minutes, strongest first, with its reading.
+* **Label**: the course and instructor shown on the staff page.
+
+Changes save as they are made. A short press of the main button, the Restart button on the page,
+or 10 minutes without activity restarts the kit, which then reconnects with its saved networks.
+
+Testing a network can move the kit's radio to that network's channel, which briefly drops the
+phone from the portal network. The result appears on the page when the phone reconnects.
+
+## Recovering after a network password change
+
+A kit fetches the server's Wi-Fi list (`GET /api/v1/config`) once per boot and every 6 hours while
+online, so a password change that Josh loads on the server reaches every kit that can still get
+online. A kit whose networks all changed at once cannot get online to fetch the new list. For that
+kit, the instructor:
+
+1. Holds the main button to start the setup portal.
+2. Enters the new password for the classroom network (or any network the kit can reach).
+3. Restarts the kit. It connects with that network, fetches the server's list, and picks up the new
+   passwords for the rest.
+
+The network the instructor entered stays as the instructor set it, since the instructor's changes
+are the source of truth for a deployed kit. If that network's password changes again later, the
+instructor updates it in the portal again.
+
 ## Behavior notes
 
 * **Clock.** Readings wait until the clock is valid. The kit sets its clock from NTP, or from the
@@ -104,5 +144,9 @@ are the source of truth for that kit.
   survives a power pull while the RTC battery lasts.
 * **Queue.** Up to a week of readings wait in RAM while the kit is offline. A power pull loses
   readings that were not yet sent.
+* **IRAM.** The firmware leaves about 500 bytes of the ESP32's 128 KB instruction RAM free,
+  since the prebuilt Wi-Fi and BLE stacks use most of it. M5Unified's speaker driver did not fit,
+  so the portal beeps with Arduino's `tone()` on the buzzer pin. OTA updates may need a newer
+  Arduino core or an ESP-IDF build to make room.
 * **Certificates.** The kit trusts ISRG Root X1 and X2. If Let's Encrypt moves the server to a root
   outside those two, uploads fail until the kit is reflashed with new roots.

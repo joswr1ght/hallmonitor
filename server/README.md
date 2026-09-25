@@ -27,6 +27,7 @@ report a new course or instructor:
 | Method and path | Auth | Purpose |
 |---|---|---|
 | `POST /api/v1/readings` | kit token | Batch upload of readings |
+| `GET /api/v1/config` | kit token | The Wi-Fi list kits merge into their own |
 | `GET /rooms`, `GET /rooms/<id>` | staff | Room picker and room page |
 | `GET /api/v1/rooms` | staff | Kits that reported in the past 24 hours, as JSON |
 | `GET /api/v1/rooms/<id>/readings?since=` | staff | A kit's readings as JSON (default: the past 7 days) |
@@ -53,6 +54,13 @@ The response reports how many readings were stored, how many were duplicates of 
 and which were rejected and why. Duplicates are expected when a kit resends a batch after a lost
 response, and they count as success.
 
+The Wi-Fi list that kits fetch is stored on the server with `set-networks`. After changing
+`firmware/networks.json`, load it on the server so kits pick up the change:
+
+```
+ssh hasborg 'cd hallmonitor && ~/.local/bin/uv run --script hallmonitor.py set-networks' < ../firmware/networks.json
+```
+
 ## Deployment on hasborg
 
 The service runs as `jwright` from `/home/jwright/hallmonitor`, and the database lives in
@@ -75,3 +83,8 @@ Run admin commands on the server the same way:
 ```
 ssh hasborg 'cd hallmonitor && ~/.local/bin/uv run --script hallmonitor.py list'
 ```
+
+A cron job for `jwright` backs up the database every night at 3:17 AM (server time, US Eastern)
+with SQLite's online backup, which is safe while the server runs. It keeps the newest 7 copies in
+`state/backups/` and logs to `state/backups/backup.log`. The copies are on the same disk as the
+database, so they protect against corruption and mistakes but not against losing the server.

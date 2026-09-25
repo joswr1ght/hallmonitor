@@ -30,9 +30,9 @@ before starting work and update it when a decision changes.
 ## Next step
 
 Phase 1 in `docs/plan.md` is built and deployed; what remains is running Josh's class on
-`client/hallclient.py run --api`, starting with the Govee verification steps listed under Phase 1. Phase 2 (prototype kit) is in progress: firmware milestones 1 to 3 compile and
-`firmware/provision.py` (milestone 4) is written, but none has run on the M5StickC Plus2 yet; the
-setup portal and OTA are not started.
+`client/hallclient.py run --api`, starting with the Govee verification steps listed under Phase 1. Phase 2 (prototype kit) is in progress: firmware milestones 1 to 5 (including
+`firmware/provision.py` and the setup portal) are written and compile, but none has run on the
+M5StickC Plus2 yet. OTA is not started; IRAM has about 500 bytes free.
 
 ## Conventions
 

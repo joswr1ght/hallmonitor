@@ -10,6 +10,7 @@
 #include <sys/time.h>
 
 #include <deque>
+#include <memory>
 
 #include "certs.h"
 #include "config.h"
@@ -19,6 +20,8 @@ static const uint32_t INTERVAL_MS = 5 * 60 * 1000;
 static const uint32_t RETRY_MS = 60 * 1000;
 static const uint32_t WIFI_RETRY_MS = 10 * 1000;
 static const uint32_t TIME_RETRY_MS = 30 * 1000;
+// How often a connected kit fetches the server's Wi-Fi list. It also fetches once per boot.
+static const uint32_t CONFIG_MS = 6 * 60 * 60 * 1000;
 // A week of readings at one every 5 minutes, held in RAM. A power pull loses what has not been sent.
 static const size_t MAX_QUEUE = 7 * 288;
 static const size_t BATCH = 250;
@@ -35,11 +38,12 @@ struct Reading {
 
 ReporterStatus reporter;
 
-static WiFiMulti wifiMulti;
+// Rebuilt when the network list changes, since WiFiMulti cannot remove a network.
+static std::unique_ptr<WiFiMulti> wifiMulti;
 static std::deque<Reading> queue;
 static bool sampled = false, uploadNow = false;
-static uint32_t lastSampleMs = 0, lastAttemptMs = 0, lastWifiTryMs = 0, lastTimeTryMs = 0;
-static bool wifiTried = false, timeTried = false, attempted = false;
+static uint32_t lastSampleMs = 0, lastAttemptMs = 0, lastWifiTryMs = 0, lastTimeTryMs = 0, lastConfigMs = 0;
+static bool wifiTried = false, timeTried = false, attempted = false, configFetched = false;
 static volatile bool ntpSynced = false;
 
 static bool clockValid() { return time(nullptr) > VALID_AFTER; }
@@ -141,18 +145,45 @@ static void upload() {
     }
 }
 
+static void loadNetworks() {
+    wifiMulti.reset(new WiFiMulti());
+    for (auto& n : config.networks) wifiMulti->addAP(n.ssid.c_str(), n.psk.c_str());
+}
+
+// Fetch the server's Wi-Fi list, so a kit that gets online through any one network learns the
+// current passwords for the rest (see "Keeping the Wi-Fi list current" in docs/plan.md).
+static void fetchConfig() {
+    WiFiClientSecure client;
+    client.setCACert(ROOT_CERTS);
+    HTTPClient http;
+    http.setTimeout(15000);
+    if (!http.begin(client, config.server + "/api/v1/config")) return;
+    http.addHeader("Authorization", "Bearer " + config.token);
+    int code = http.GET();
+    String body = code == 200 ? http.getString() : "";
+    http.end();
+    JsonDocument doc;
+    if (body.isEmpty() || deserializeJson(doc, body) || !doc["networks"].is<JsonArray>()) return;
+    // An empty list means the server has none set, not that the kit should forget its networks.
+    if (doc["networks"].size() == 0) return;
+    if (mergeNetworks(doc["networks"].as<JsonArrayConst>())) {
+        saveConfig();
+        loadNetworks();
+    }
+}
+
 void reporterBegin() {
     if (M5.Rtc.isEnabled()) M5.Rtc.setSystemTimeFromRtc();
     sntp_set_time_sync_notification_cb([](struct timeval*) { ntpSynced = true; });
     configTime(0, 0, "pool.ntp.org", "time.google.com");
     WiFi.mode(WIFI_STA);
-    for (auto& n : config.networks) wifiMulti.addAP(n.ssid.c_str(), n.psk.c_str());
+    loadNetworks();
 }
 
 void reporterTick() {
     // WiFiMulti scans and joins the strongest known network; it blocks for a few seconds per try.
     if (WiFi.status() != WL_CONNECTED && !config.networks.empty() && due(wifiTried, lastWifiTryMs, WIFI_RETRY_MS)) {
-        wifiMulti.run(5000);
+        wifiMulti->run(5000);
         wifiTried = true;
         lastWifiTryMs = millis();
     }
@@ -171,6 +202,14 @@ void reporterTick() {
         lastTimeTryMs = millis();
     }
     reporter.timeValid = clockValid();
+
+    // TLS needs a valid clock, so the config fetch waits for one too.
+    if (reporter.wifiConnected && reporter.timeValid && !config.token.isEmpty() &&
+        due(configFetched, lastConfigMs, CONFIG_MS)) {
+        configFetched = true;
+        lastConfigMs = millis();
+        fetchConfig();
+    }
 
     // Readings wait for a valid clock, since a reading without a trustworthy time is not useful.
     if (reporter.timeValid && due(sampled, lastSampleMs, INTERVAL_MS)) sample();

@@ -6,6 +6,7 @@
 #include "config.h"
 #include "display.h"
 #include "govee.h"
+#include "portal.h"
 #include "reporter.h"
 
 // Long enough for a config line carrying the full SANS class network list with room to grow.
@@ -32,6 +33,7 @@ void setup() {
     Serial.begin(115200);
     auto cfg = M5.config();
     cfg.serial_baudrate = 0;
+    cfg.internal_spk = false;  // the portal drives the buzzer with tone() instead
     M5.begin(cfg);
     loadConfig();
     displayBegin();
@@ -42,7 +44,13 @@ void setup() {
 void loop() {
     M5.update();
     readSerial();
-    reporterTick();
-    displayTick();
+    if (portalActive()) {
+        portalTick();
+    } else if (M5.BtnA.pressedFor(3000)) {
+        portalStart();
+    } else {
+        reporterTick();
+        displayTick();
+    }
     delay(20);
 }

@@ -7,8 +7,10 @@
 
     uv run hallmonitor.py add-kit --course SEC504 --instructor "Josh Wright"   # prints the token once
     uv run hallmonitor.py set-kit 1 --instructor "Another Instructor"
+    uv run hallmonitor.py set-networks < ../firmware/networks.json   # the Wi-Fi list kits fetch
     uv run hallmonitor.py set-staff-password                        # prompts for the shared password
     uv run hallmonitor.py list
+    uv run hallmonitor.py backup state/backups --keep 7             # run nightly from cron
     uv run hallmonitor.py revoke 1
     uv run hallmonitor.py serve --port 8504
 """
@@ -16,6 +18,7 @@
 import argparse
 import getpass
 import hashlib
+import json
 import secrets
 import sqlite3
 import sys
@@ -190,6 +193,13 @@ def create_app(db_path: Path, secure_cookies: bool = True) -> Flask:
         # Duplicates are a kit resending a batch after a lost response, so they count as success.
         prune_readings()
         return jsonify(stored=stored, duplicates=len(rows) - stored, rejected=rejected)
+
+    @app.get("/api/v1/config")
+    def get_config():
+        """The Wi-Fi list for kits. A kit keeps any network an instructor set in its setup portal."""
+        if kit_id() is None:
+            return jsonify(error="invalid or revoked token"), 401
+        return jsonify(networks=json.loads(get_setting(db(), "networks") or "[]"))
 
     # --- staff pages and read API ---
 
@@ -368,6 +378,23 @@ def cmd_set_staff_password(args) -> int:
     return 0
 
 
+def cmd_set_networks(args) -> int:
+    """Store the Wi-Fi list that kits fetch from /api/v1/config, read as JSON from stdin."""
+    try:
+        networks = [{"ssid": str(n["ssid"]), "psk": str(n["psk"])} for n in json.load(sys.stdin)]
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        print(f"expected a JSON list of {{\"ssid\": ..., \"psk\": ...}} on stdin: {exc}", file=sys.stderr)
+        return 1
+    bad = [n["ssid"] for n in networks if not (1 <= len(n["ssid"]) <= 32 and 8 <= len(n["psk"]) <= 63)]
+    if bad:
+        print(f"SSIDs must be 1-32 characters and passwords 8-63: {', '.join(bad)}", file=sys.stderr)
+        return 1
+    with connect(args.db) as conn:
+        conn.execute("INSERT OR REPLACE INTO settings VALUES ('networks', ?)", (json.dumps(networks),))
+    print(f"{len(networks)} networks stored; kits pick them up when they next fetch their config")
+    return 0
+
+
 def cmd_list(args) -> int:
     with connect(args.db) as conn:
         kits = conn.execute("SELECT k.*, (SELECT max(ts) FROM readings r WHERE r.kit_id = k.id) AS last "
@@ -376,6 +403,19 @@ def cmd_list(args) -> int:
         state = f"revoked {k['revoked_at']}" if k["revoked_at"] else "active"
         print(f"{k['id']:>3}  {k['course']:<8} {k['instructor']:<20} sensor={k['sensor'] or '-'}  {state}  "
               f"last={k['last'] or '-'}")
+    return 0
+
+
+def cmd_backup(args) -> int:
+    """Copy the database with SQLite's online backup, which is safe while the server is writing."""
+    args.dest.mkdir(parents=True, exist_ok=True)
+    target = args.dest / f"hallmonitor-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.db"
+    with connect(args.db) as source, sqlite3.connect(target) as copy:
+        source.backup(copy)
+    copy.close()
+    for old in sorted(args.dest.glob("hallmonitor-*.db"))[:-args.keep]:
+        old.unlink()
+    print(f"backed up to {target}")
     return 0
 
 
@@ -411,7 +451,15 @@ def main() -> int:
     sub.add_parser("set-staff-password", help="set the shared staff password (prompts, or reads stdin)"
                    ).set_defaults(func=cmd_set_staff_password)
 
+    sub.add_parser("set-networks", help="store the Wi-Fi list kits fetch (JSON on stdin)"
+                   ).set_defaults(func=cmd_set_networks)
+
     sub.add_parser("list", help="list kits").set_defaults(func=cmd_list)
+
+    p = sub.add_parser("backup", help="copy the database to a directory, keeping the newest copies")
+    p.add_argument("dest", type=Path)
+    p.add_argument("--keep", type=int, default=7, help="copies to keep (default 7)")
+    p.set_defaults(func=cmd_backup)
 
     p = sub.add_parser("serve", help="run the API server")
     p.add_argument("--host", default="127.0.0.1")
