@@ -31,6 +31,8 @@ report a new course or instructor:
 | `GET /api/v1/rooms` | staff | Kits that reported in the past 24 hours, as JSON |
 | `GET /api/v1/rooms/<id>/readings?since=` | staff | A kit's readings as JSON (default: the past 7 days) |
 
+The server keeps readings for 90 days. Once a day, when a kit uploads, it deletes anything older.
+
 For local testing over plain HTTP, add `--insecure-cookies` to `serve`; without it, browsers only
 send the login cookie over HTTPS.
 

@@ -45,6 +45,8 @@ TZ_COOKIE = "tz"
 ACTIVE_HOURS = 24
 # Longest course or instructor name a kit can report from its setup portal.
 MAX_LABEL = 40
+# Readings older than this are deleted, checked at most once a day when a kit uploads.
+RETENTION_DAYS = 90
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS kits     (id INTEGER PRIMARY KEY, course TEXT NOT NULL, instructor TEXT NOT NULL,
@@ -141,6 +143,16 @@ def create_app(db_path: Path, secure_cookies: bool = True) -> Flask:
         if conn is not None:
             conn.close()
 
+    last_prune = [None]  # when old readings were last deleted, shared across requests
+
+    def prune_readings() -> None:
+        now = datetime.now(timezone.utc)
+        if last_prune[0] is not None and now - last_prune[0] < timedelta(days=1):
+            return
+        last_prune[0] = now
+        with db() as conn:
+            conn.execute("DELETE FROM readings WHERE ts < ?", (utc_text(now - timedelta(days=RETENTION_DAYS)),))
+
     def kit_id() -> int | None:
         """Return the kit ID for the request's bearer token, or None if it is missing or revoked."""
         scheme, _, token = request.headers.get("Authorization", "").partition(" ")
@@ -176,6 +188,7 @@ def create_app(db_path: Path, secure_cookies: bool = True) -> Flask:
             conn.executemany("INSERT OR IGNORE INTO readings VALUES (?, ?, ?, ?, ?, ?)", rows)
             stored = conn.total_changes - before
         # Duplicates are a kit resending a batch after a lost response, so they count as success.
+        prune_readings()
         return jsonify(stored=stored, duplicates=len(rows) - stored, rejected=rejected)
 
     # --- staff pages and read API ---

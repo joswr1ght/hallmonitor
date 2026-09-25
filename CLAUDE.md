@@ -15,6 +15,7 @@ before starting work and update it when a decision changes.
     - SQLite in WAL mode, one opaque bearer
     - token per kit (stored hashed), command-line admin tool
     - Flask under waitress on 127.0.0.1, run by systemd, reached through Apache `mod_proxy`
+- Readings are kept 90 days. No login rate limiting for now.
 - Staff page: one shared staff password; everyone sees all rooms; last room viewed kept in a cookie.
 - Kits are labeled by course and instructor (no events or deployments), set at provisioning and
   changeable from the setup portal. Charts: 24-hour main, 72-hour and 7-day below, in the viewer's
@@ -29,8 +30,9 @@ before starting work and update it when a decision changes.
 ## Next step
 
 Phase 1 in `docs/plan.md` is built and deployed; what remains is running Josh's class on
-`client/hallclient.py run --api`, starting with the Govee verification steps listed under Phase 1. Phase 2 (prototype kit) is in progress: firmware milestones 1 to 3 compile but have not run on
-the M5StickC Plus2 yet; `provision.py`, the setup portal, and OTA are not started.
+`client/hallclient.py run --api`, starting with the Govee verification steps listed under Phase 1. Phase 2 (prototype kit) is in progress: firmware milestones 1 to 3 compile and
+`firmware/provision.py` (milestone 4) is written, but none has run on the M5StickC Plus2 yet; the
+setup portal and OTA are not started.
 
 ## Conventions
 

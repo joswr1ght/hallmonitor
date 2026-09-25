@@ -5,9 +5,9 @@ sensor over Bluetooth Low Energy (BLE), queues a reading every 5 minutes, joins 
 Wi-Fi network, and uploads batches to the server. The screen shows the current reading and the
 kit's status.
 
-Status: milestones 1 to 3 (screen, BLE decoding, and uploads) are written and compile, but have not
-run on hardware yet. Provisioning is by hand over USB serial until `provision.py` exists, and the
-setup portal and over-the-air (OTA) updates are not started. See Phase 2 in
+Status: milestones 1 to 4 (screen, BLE decoding, uploads, and `provision.py`) are written. The
+firmware compiles and `provision.py` passed a test against a simulated kit, but neither has run on
+hardware yet. The setup portal and over-the-air (OTA) updates are not started. See Phase 2 in
 [../docs/plan.md](../docs/plan.md).
 
 ## Toolchain
@@ -40,7 +40,30 @@ The first build downloads the ESP32 toolchain and takes a few minutes. The libra
 | `src/display.*` | The status screen |
 | `src/certs.h` | The Let's Encrypt root certificates the kit trusts |
 
-## Provisioning over serial
+## Provisioning a kit
+
+`provision.py` sets up a kit in one command. With the kit plugged in over USB-C and turned on:
+
+```sh
+uv run provision.py --course SEC504 --instructor "Josh Wright"
+```
+
+The script finds the kit on USB, flashes the firmware, creates the kit on the server with
+`add-kit` over SSH, and sends the kit its ID, token, label, and every network in `networks.json`.
+It then lists the Govee sensors the kit hears, strongest first, and asks which one to pair; pass
+`--sensor Govee_H5074_C0A6` to skip the question. Last, it reboots the kit and prints the kit ID to
+write on the kit and its sensor. The token goes from the server to the kit without being saved or
+shown anywhere else.
+
+After `networks.json` changes, `--update` resends the list to a kit that is already provisioned,
+without flashing or touching the server. `--update` also accepts `--course`, `--instructor`, and
+`--sensor` to change the label or the paired sensor. `--port` picks the serial port when more than
+one is plugged in, and `--no-flash` skips flashing a kit that already runs the current firmware.
+
+Provisioning a kit that already has settings creates a new kit on the server. Revoke the old kit
+with the server's `revoke` command if nothing else uses it.
+
+## Serial commands
 
 A new kit has no settings. With the kit on USB, `pio device monitor` accepts one command per line,
 and each command answers with one line of JSON:
@@ -52,7 +75,8 @@ and each command answers with one line of JSON:
 | `config {json}` | Set any of `kit_id`, `server`, `token`, `course`, `instructor`, `sensor`, and `networks` |
 | `reboot` | Restart the kit, which it needs to pick up new Wi-Fi networks |
 
-To provision a kit by hand, create it on the server, then paste one `config` line with the token
+`provision.py` uses these commands. To provision a kit by hand instead, create it on the server,
+then paste one `config` line with the token
 that `add-kit` printed, and reboot:
 
 ```

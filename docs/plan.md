@@ -548,8 +548,8 @@ splits into milestones that can each be tested on the board:
 5. The setup portal (F1).
 6. Over-the-air (OTA) updates, before Phase 3.
 
-Milestones 1 to 3 are written and compile. They still need to run on the board, and until
-`provision.py` exists a kit is provisioned by hand over serial (see `firmware/README.md`).
+Milestones 1 to 4 are written. The firmware compiles and `provision.py` passed a test against a
+simulated kit on a pseudo-terminal, but both still need to run on the board.
 
 **Phase 3: pilot with two or three instructors**
 
@@ -575,10 +575,12 @@ These need answers from Josh before or during Phase 1:
 4. Do SANS venue networks ever require a captive portal? (Answered in part: class networks use WPA2
    on both 2.4 GHz and 5 GHz.)
 5. Is a per-kit cost ceiling in mind (for example, under $40)?
-6. How long should readings be kept after a class ends?
+6. How long should readings be kept after a class ends? (Answered: 90 days. The server deletes
+   older readings once a day.)
 7. Should instructors see only their own rooms, or all rooms at the event? (Answered: all rooms.)
 8. Should the setup portal's Wi-Fi network be open or password protected? (Answered: WPA2 with a
    random password shown on the kit's screen, as in F1.)
+9. Should the staff login be rate limited? (Answered: not for now.)
 
 The answers to questions 1 and 2 decide most of the hardware and setup design, so they should be
 settled first.
