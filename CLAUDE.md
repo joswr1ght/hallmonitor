@@ -20,13 +20,17 @@ before starting work and update it when a decision changes.
   changeable from the setup portal. Charts: 24-hour main, 72-hour and 7-day below, in the viewer's
   time zone.
 - Setup portal network is WPA2 with a random per-session password on the LCD.
+- Once deployed, an instructor's portal edits are the source of truth for their kit; server or
+  provisioning lists never override instructor-edited networks.
+- Firmware: Arduino framework with PlatformIO (`uv tool install platformio`), M5Unified,
+  NimBLE-Arduino, ArduinoJson. Kits are provisioned over USB serial.
 - Govee decoders are a per-model table so a replacement model is one new entry.
 
 ## Next step
 
 Phase 1 in `docs/plan.md` is built and deployed; what remains is running Josh's class on
-`client/hallclient.py run --api`, starting with the Govee verification steps listed under Phase 1. Phase 2 (prototype kit) is next. The firmware toolchain (Arduino core or
-MicroPython) is still open.
+`client/hallclient.py run --api`, starting with the Govee verification steps listed under Phase 1. Phase 2 (prototype kit) is in progress: firmware milestones 1 to 3 compile but have not run on
+the M5StickC Plus2 yet; `provision.py`, the setup portal, and OTA are not started.
 
 ## Conventions
 

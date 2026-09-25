@@ -2,3 +2,5 @@ state/
 out/
 __pycache__/
 *.pyc
+.pio/
+firmware/networks.json

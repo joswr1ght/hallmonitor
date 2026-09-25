@@ -1,7 +1,7 @@
 # hallmonitor plan
 
 Status, 2026-09-24: Phase 1 is built and deployed at `https://hallmonitor.willhackforsushi.com`. The
-firmware is not started. Prices are rough estimates and should be checked before committing to a
+firmware for milestones 1 to 3 is written and compiles but has not run on hardware. Prices are rough estimates and should be checked before committing to a
 bill of materials.
 
 ## Goal
@@ -230,7 +230,8 @@ the device.
 **Credentials and Wi-Fi list**
 
 Josh flashes each kit with its device token and the current venue Wi-Fi list before handing it to
-an instructor. The kit then fetches an updated Wi-Fi list from `GET /api/v1/config` each time it is
+an instructor. The list is the 47 SANS class networks (one per course, such as `SEC504`), kept in
+`firmware/networks.json`, which is gitignored because it holds the passwords. The kit then fetches an updated Wi-Fi list from `GET /api/v1/config` each time it is
 online, so a new venue network added on the server reaches every kit on its next connection. The
 baked-in list only has to get the kit online once.
 
@@ -399,11 +400,14 @@ it should be somewhere it will not be unplugged for a laptop charger. The Govee 
 reliable Bluetooth range of the kit; the current measurements at a few meters are the only data
 so far.
 
-**H7: Timestamps before time sync (open)**
+**H7: Timestamps before time sync (leaning: no readings without a valid clock)**
 
 Readings queued before the kit's first network time sync need a trustworthy timestamp. The StickC
-has an RTC, which keeps time while its battery holds charge. The firmware should mark readings taken
-before a successful sync so the server can reject them or correct them.
+has an RTC, which keeps time while its battery holds charge. The firmware as written takes no
+readings until the clock is valid. It sets the clock from NTP, or from the server's HTTP `Date`
+header when a venue blocks NTP, restores it from the RTC at boot, and copies each sync back to the
+RTC. A kit that boots with a flat RTC battery and no network records nothing until it gets online,
+which the prototype should show is rare.
 
 **H8: Bluetooth and Wi-Fi on one radio (open)**
 
@@ -472,7 +476,13 @@ changes an instructor makes in the portal. The two can disagree about the same n
 example when an instructor updates a password in the portal before Josh updates the server. The
 leaning is that each entry carries the time it last changed, the newer entry wins on the kit, and
 the kit reports portal changes to the server with its next upload so Josh can fold them into the
-server list for every kit. This needs a decision before the portal is built.
+server list for every kit.
+
+Decided (2026-09-24): once a kit is deployed, the instructor's changes are the source of truth for
+that kit. A network the instructor added or edited in the portal is marked on the kit, and a list
+from provisioning or the server never overrides it. Networks the instructor has not touched still
+follow the server list. The kit also reports its course, instructor, and sensor with every upload,
+so the server's record follows the kit.
 
 **Sensor selection**
 
@@ -525,6 +535,21 @@ Done 2026-09-24, except moving Josh's class onto `--api` mode. Remaining steps:
 Buy one M5StickC Plus2 and pair it with the existing H5074. Write firmware that reads the Govee
 over BLE, queues readings, joins the strongest known network, and uploads batches.
 Run it alongside the Mac for one full class and compare the two data sets.
+
+Decided (2026-09-24): the firmware uses the Arduino framework built with PlatformIO, with
+M5Unified for the screen, buttons, and RTC, NimBLE-Arduino for BLE, and ArduinoJson. The work
+splits into milestones that can each be tested on the board:
+
+1. Screen and buttons.
+2. BLE scan with the H5074 decoded on screen, compared against the Mac client.
+3. Wi-Fi, clock, queue, and HTTPS uploads to the server.
+4. `provision.py`, which runs `add-kit` on the server over SSH, flashes the firmware, and sends the
+   kit its settings over USB serial. One firmware build then serves every kit.
+5. The setup portal (F1).
+6. Over-the-air (OTA) updates, before Phase 3.
+
+Milestones 1 to 3 are written and compile. They still need to run on the board, and until
+`provision.py` exists a kit is provisioned by hand over serial (see `firmware/README.md`).
 
 **Phase 3: pilot with two or three instructors**
 
