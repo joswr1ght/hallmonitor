@@ -1,7 +1,8 @@
 # hallmonitor plan
 
-Status: brainstorm, 2026-09-24. Nothing here is built yet. Prices are rough estimates and should be
-checked before committing to a bill of materials.
+Status, 2026-09-24: Phase 1 is built and deployed at `https://hallmonitor.willhackforsushi.com`. The
+firmware is not started. Prices are rough estimates and should be checked before committing to a
+bill of materials.
 
 ## Goal
 
@@ -12,6 +13,21 @@ gaps in the history.
 The expanded system should let any instructor drop a small, inexpensive kit into a classroom on day
 one and forget about it for the 5-6 day run of the class. Event staff should open one page, pick a
 room from a drop-down, and see the current temperature, humidity, and trend for that room.
+
+## Deliverables
+
+The finished project has four parts:
+
+1. **Kit firmware.** Firmware for the M5StickC Plus2 that reads the paired Govee sensor over
+   Bluetooth Low Energy (BLE), uploads readings to the server, and shows temperature, humidity, and
+   status information on the LCD (see "What the screen shows").
+2. **API server.** The server that accepts readings from kits, stores them, and serves them to the
+   web interface (see "Server and API"). Built and deployed.
+3. **Web interface.** A staff login on the server, a drop-down of classrooms, and charts of each
+   room's readings over 24-hour, 72-hour, and 7-day windows. Built and deployed.
+4. **Setup portal.** A press-and-hold on the kit starts a Wi-Fi network for configuring the kit from
+   a phone: choosing the Govee sensor from a list sorted by signal strength, adding Wi-Fi networks,
+   and updating the saved entry for a network whose password changed (see F1).
 
 ## Requirements
 
@@ -63,7 +79,7 @@ that includes the Govee sensor (about $15) where one is used.
 **Option A: Raspberry Pi Zero 2 W**
 
 This is the closest match to the current code. BlueZ on Linux is a supported bleak backend, so the
-existing scanner and decoder in `client/thermomon.py` run with little change. NetworkManager
+existing scanner and decoder in `client/hallclient.py` run with little change. NetworkManager
 handles WPA2 and WPA3 profiles.
 
 * Board about $15, microSD about $8, USB power supply about $8, case about $6. Kit total about $52.
@@ -138,35 +154,37 @@ declared as `uv` inline dependencies) behind the Apache and certbot setup alread
 
 | Method and path | Auth | Purpose |
 |---|---|---|
-| `POST /api/v1/readings` | device token | Batch upload of queued readings |
-| `GET /api/v1/config` | device token | Room label, sensor address, and Wi-Fi list for this kit |
-| `GET /api/v1/rooms` | staff | Active rooms for the drop-down |
+| `POST /api/v1/readings` | kit token | Batch upload of queued readings, plus the kit's course, instructor, and sensor when they change |
+| `GET /api/v1/config` | kit token | Wi-Fi list for this kit (not built yet) |
+| `GET /api/v1/rooms` | staff | Kits that reported in the past 24 hours, for the drop-down |
 | `GET /api/v1/rooms/{id}/readings?since=` | staff | Readings for charts and a future Slack bot |
 | `GET /rooms` and `/rooms/{id}` | staff | The rendered staff page |
 
-A command-line admin tool on the server issues and revokes tokens, and creates instructors and
-kits. That avoids building an admin web interface.
+A command-line admin tool on the server issues and revokes kit tokens and sets each kit's course
+and instructor. That avoids building an admin web interface.
 
-**Schema sketch**
+**Schema**
 
 ```sql
-CREATE TABLE instructors (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
-CREATE TABLE devices     (id INTEGER PRIMARY KEY, instructor_id INTEGER REFERENCES instructors,
-                          token_hash TEXT UNIQUE, sensor_addr TEXT, revoked_at TEXT);
-CREATE TABLE deployments (id INTEGER PRIMARY KEY, device_id INTEGER REFERENCES devices,
-                          event TEXT, room_label TEXT, tz TEXT, starts TEXT, ends TEXT);
-CREATE TABLE readings    (device_id INTEGER REFERENCES devices, ts TEXT, celsius REAL,
-                          humidity REAL, battery INTEGER, rssi INTEGER,
-                          PRIMARY KEY (device_id, ts)) WITHOUT ROWID;
+CREATE TABLE kits     (id INTEGER PRIMARY KEY, course TEXT NOT NULL, instructor TEXT NOT NULL,
+                       sensor TEXT, token_hash TEXT UNIQUE NOT NULL, revoked_at TEXT);
+CREATE TABLE readings (kit_id INTEGER NOT NULL REFERENCES kits, ts TEXT NOT NULL,
+                       celsius REAL NOT NULL, humidity REAL NOT NULL, battery INTEGER,
+                       rssi INTEGER, PRIMARY KEY (kit_id, ts)) WITHOUT ROWID;
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 ```
 
-The `deployments` table separates "which kit" from "which room this week." The staff drop-down
-lists deployments whose date range includes today, and a kit that moves to a new event gets a new
-deployment row instead of a renamed device. The `(device_id, ts)` primary key makes batch uploads
-idempotent, so a kit that resends a batch after a lost response does not create duplicates.
+A kit is labeled by course and instructor (for example "SEC504 · Josh Wright"), not by event or
+room. An earlier design tied kits to per-event deployments with room names and dates, but that
+would require setup for every event an instructor teaches. Instead, the staff drop-down lists every
+kit that reported in the past 24 hours, and staff find a classroom by course and instructor, which
+the event schedule already lists. The `(kit_id, ts)` primary key makes batch uploads idempotent, so
+a kit that resends a batch after a lost response does not create duplicates. The `settings` table
+holds the staff password hash and the key that signs session cookies.
 
-Timestamps should be stored in UTC and rendered in the deployment's time zone. The current script
-renders in the Mac's local time, which works only because the Mac travels with the instructor.
+Timestamps are stored in UTC and rendered in the viewer's time zone, which a small script on the
+page reports to the server in a cookie. Staff read the page at the venue, so the viewer's time zone
+is the classroom's time zone without any per-event setup.
 
 **JWT or opaque token**
 
@@ -183,7 +201,25 @@ kits (or a kit that is lost) can then have one token revoked without affecting t
 
 The readings themselves are not sensitive, but room names and event schedules might be. Options
 range from fully public (as today, with `noindex`), to a shared staff passcode per event, to
-per-person logins. A shared passcode per event is probably enough.
+per-person logins.
+
+Decided (2026-09-24): one shared staff password for now, which can move to per-event passcodes or
+per-person logins later. Instructors and event staff see all rooms. The last room viewed is kept in
+a cookie, so an instructor who opens the page sees their own room without choosing it each time.
+
+**Hosting on hasborg**
+
+hasborg runs Ubuntu 24.04 and Apache 2.4 with the prefork module (for PHP), and no proxy or Web
+Server Gateway Interface (WSGI) module is enabled today. The server is one `uv` script,
+`server/hallmonitor.py`, that runs the Flask app under the waitress WSGI server on `127.0.0.1`. A
+systemd service keeps it running, and Apache forwards requests to it with `mod_proxy` and
+`mod_proxy_http`. Running the app in its own process, instead of inside Apache with `mod_wsgi`,
+keeps it apart from the PHP sites that share the server and lets it restart without reloading
+Apache.
+
+Deployed 2026-09-24 at `https://hallmonitor.willhackforsushi.com`, with the upload endpoint only.
+The service runs `uv run --offline`, so a reboot does not depend on reaching the Python Package
+Index (PyPI). The deployment steps are in `server/README.md`.
 
 ## Setup without a keyboard or monitor
 
@@ -203,16 +239,12 @@ phone hotspot (a fixed SSID and PSK in every kit's list) or a captive-portal set
 kit becomes its own access point and serves a page for entering an SSID and PSK. The hotspot
 fallback is far less code.
 
-**Room assignment**
+**Course and instructor label**
 
-Room assignment belongs on the server, not the kit. The instructor (or Josh) creates a deployment
-with the event name, room label, and dates, through the admin tool or a small form authenticated
-with the instructor's link. The kit never needs to know its room name, which also means no typing
-on a 3-button device.
-
-If on-device selection turns out to be useful, the server can push a short list of rooms for the
-event through `/api/v1/config`, and the buttons pick one. That should wait until the simpler path
-proves insufficient.
+Josh sets each kit's course and instructor name when provisioning it (`add-kit --course SEC504
+--instructor "Josh Wright"`). When a kit changes hands, the new instructor updates the label in the
+setup portal (F1), and the kit sends the new label with its next upload. Josh can also change it on
+the server with `set-kit`. No per-event room assignment is needed.
 
 **Sensor identity**
 
@@ -231,12 +263,13 @@ instructor rebinds the kit through the setup portal (F1).
 The screen is mainly a status display, not a setup menu:
 
 * Current temperature and humidity
+* The course and instructor label
 * Sensor short name and signal strength
 * Connected SSID and Wi-Fi signal strength
 * Time since the last successful upload, and the number of queued readings
 * The device ID, so the instructor can tell Josh which kit has a problem
 
-These five lines answer nearly every "is it working?" question without a laptop.
+These lines answer nearly every "is it working?" question without a laptop.
 
 ## Wi-Fi selection
 
@@ -352,7 +385,7 @@ the kit hardware.
 
 The replaceability point puts one requirement on the firmware. The decoder should be a table of
 supported models (matched by the advertised name prefix), so adding a model means adding one
-decoder entry and releasing an OTA update. Before adopting a new Govee model, a `thermomon.py scan`
+decoder entry and releasing an OTA update. Before adopting a new Govee model, a `hallclient.py scan`
 should confirm it broadcasts its readings unencrypted in BLE advertisements, as the H5074 and H5075
 do; a model that requires a connection or the Govee cloud would not work with this design.
 
@@ -423,13 +456,23 @@ kit they cannot touch.
 
 **Scope for the first version**
 
-The portal has three pages:
+The portal has four pages:
 
-* Wi-Fi: add and remove networks, as described in the flow above.
-* Sensor: choose which Govee sensor the kit reports (see below).
+* Wi-Fi: add a network, as described in the flow above; update the saved password for a network
+  already in the list when the venue changes it; and remove a network.
+* Sensor: choose which Govee sensor the kit reports, from a list sorted by signal strength (see
+  below).
+* Label: the course number and instructor name shown on the staff page.
 * Status: kit ID, paired sensor, last upload, and queued readings.
 
-Room changes stay out of the portal, since rooms are assigned on the server.
+**Keeping the Wi-Fi list current**
+
+A kit's Wi-Fi list has two sources: the list Josh maintains on the server (H4, option 1) and the
+changes an instructor makes in the portal. The two can disagree about the same network, for
+example when an instructor updates a password in the portal before Josh updates the server. The
+leaning is that each entry carries the time it last changed, the newer entry wins on the kit, and
+the kit reports portal changes to the server with its next upload so Josh can fold them into the
+server list for every kit. This needs a decision before the portal is built.
 
 **Sensor selection**
 
@@ -462,9 +505,20 @@ Each phase produces something usable on its own.
 **Phase 1: server API, Mac as the first client**
 
 Build the API, the SQLite schema, the admin tool, and the staff page with the room drop-down. Add
-an `--api` publish mode to `client/thermomon.py` that POSTs readings with a device token instead of
-rsyncing HTML. This validates the whole server side with no new hardware, and Josh's class switches
-over immediately. The lunch and overnight gap remains, but the page and data path are the new ones.
+an `--api` publish mode to the Mac client (now `client/hallclient.py`) that POSTs readings with a
+kit token instead of rsyncing HTML. This validates the whole server side with no new hardware, and
+Josh's class switches over immediately. The lunch and overnight gap remains, but the page and data
+path are the new ones.
+
+Done 2026-09-24, except moving Josh's class onto `--api` mode. Remaining steps:
+
+1. Verify the Govee connection end to end. With the H5074 nearby, run
+   `uv run hallclient.py scan` from `client/` and confirm `Govee_H5074_C0A6` appears with a decoded
+   reading. Then run `uv run hallclient.py run --once --api https://hallmonitor.willhackforsushi.com
+   --name-match Govee_H5074_C0A6` and confirm the reading appears on the SEC504 · Josh Wright page.
+   The first attempt on 2026-09-24 heard no Govee devices because the sensor was not nearby.
+2. Open the staff page on a phone and confirm times render in the local time zone.
+3. Run the client with `--api` for a full class.
 
 **Phase 2: prototype kit**
 
@@ -492,11 +546,14 @@ These need answers from Josh before or during Phase 1:
    preconfigures. See H3 under "Issues to work out.")
 2. Is the target a Govee kit, a wired-sensor kit, or both? (Answered: Govee. See H5.)
 3. Should the staff page be public, protected by a shared passcode per event, or something else?
+   (Answered: one shared staff password for now. See "Staff page access.")
 4. Do SANS venue networks ever require a captive portal? (Answered in part: class networks use WPA2
    on both 2.4 GHz and 5 GHz.)
 5. Is a per-kit cost ceiling in mind (for example, under $40)?
 6. How long should readings be kept after a class ends?
-7. Should instructors see only their own rooms, or all rooms at the event?
+7. Should instructors see only their own rooms, or all rooms at the event? (Answered: all rooms.)
+8. Should the setup portal's Wi-Fi network be open or password protected? (Answered: WPA2 with a
+   random password shown on the kit's screen, as in F1.)
 
 The answers to questions 1 and 2 decide most of the hardware and setup design, so they should be
 settled first.

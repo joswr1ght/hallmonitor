@@ -1,18 +1,18 @@
-# thermomon
+# hallclient
 
-> This is the original single-classroom client, copied unchanged from the thermomon project. Phase 1
-> of [the plan](../docs/plan.md) adds an API publish mode so it reports to the hallmonitor server.
+> This is the original single-classroom client from the thermomon project, renamed `hallclient.py`.
+> With `--api` it reports to the hallmonitor server like a kit does; without it, it still publishes
+> the original static page over rsync.
 
-Reads a Govee Bluetooth thermometer/hygrometer from macOS and publishes the reading to
-<https://www.hasborg.com/joshteachingroom> so SANS event staff can check classroom temperature and
-humidity without interrupting class.
+Reads a Govee Bluetooth thermometer/hygrometer from macOS and publishes the reading so SANS event
+staff can check classroom temperature and humidity without interrupting class.
 
-The sensor broadcasts its readings in BLE advertisements, so thermomon never pairs or connects. The
+The sensor broadcasts its readings in BLE advertisements, so the client never pairs or connects. The
 Govee Home app on the phone keeps working at the same time.
 
 ## Requirements
 
-- macOS with Bluetooth, and `uv` (dependencies are declared inline in `thermomon.py`)
+- macOS with Bluetooth, and `uv` (dependencies are declared inline in `hallclient.py`)
 - The `hasborg` SSH alias in `~/.ssh/config` (already present: 107.170.28.205:2232)
 
 ### Bluetooth permission
@@ -26,7 +26,7 @@ The first run prompts for Bluetooth access. If it was previously denied, bleak r
 Confirm the sensor is heard and decodes correctly:
 
 ```sh
-uv run thermomon.py scan
+uv run hallclient.py scan
 ```
 
 This prints every nearby Govee device with its local name, raw manufacturer bytes, and decoded
@@ -36,13 +36,13 @@ H5074, pass `--name-match H5075` to `run`.
 Render and publish one reading:
 
 ```sh
-uv run thermomon.py run --once
+uv run hallclient.py run --once
 ```
 
 Run the publish loop while teaching:
 
 ```sh
-caffeinate -i uv run thermomon.py run
+caffeinate -i uv run hallclient.py run
 ```
 
 `caffeinate -i` keeps idle sleep from stopping the BLE scan. Closing the lid still suspends the Mac
@@ -58,7 +58,19 @@ Useful flags on `run`:
 | `--name-match` | `H5074` | substring the device local name must contain |
 | `--room-label` | `Josh's teaching room` | heading on the page |
 | `--dest` | the hasborg docroot | rsync destination |
+| `--api` | off | upload to the hallmonitor server at this URL instead of rsyncing |
 | `--no-publish` | off | render into `out/` without rsyncing |
+
+To report to the hallmonitor server, save the kit token from the server's `add-kit` command in
+`state/api-token` and pass the server URL:
+
+```sh
+caffeinate -i uv run hallclient.py run --api https://hallmonitor.willhackforsushi.com
+```
+
+Readings that fail to upload wait in `state/queue.json` and go up in the next successful upload, so
+a Wi-Fi drop delays the staff page instead of leaving a gap. The page still renders into `out/`
+locally, but nothing is rsynced.
 
 Pin to one specific sensor when other Govee devices are in range — likely at a conference — by
 passing the full local name, for example `--name-match Govee_H5074_C0A6`.
@@ -133,7 +145,7 @@ ssh hasborg 'sudo certbot --apache -d hasborg.com -d www.hasborg.com --redirect 
 ```
 
 Note that `https://www.hasborg.com/` at the root still returns 403 — that docroot is empty and
-thermomon does not change it.
+the client does not change it.
 
 ## Before a conference
 
@@ -143,5 +155,5 @@ From the venue wifi, confirm the one network dependency works:
 ssh hasborg true
 ```
 
-Outbound TCP 2232 is all thermomon needs. If the venue blocks it, tether the Mac to an iPhone
+Outbound TCP 2232 is all the rsync mode needs; `--api` mode needs only HTTPS. If the venue blocks it, tether the Mac to an iPhone
 hotspot for the publish step.

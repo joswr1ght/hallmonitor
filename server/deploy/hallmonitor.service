@@ -1,0 +1,18 @@
+[Unit]
+Description=hallmonitor API server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=jwright
+Group=jwright
+WorkingDirectory=/home/jwright/hallmonitor
+ExecStart=/home/jwright/.local/bin/uv run --offline --script /home/jwright/hallmonitor/hallmonitor.py serve --port 8504
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

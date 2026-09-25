@@ -12,7 +12,7 @@ static page over SSH. The plan for the expanded project is in [docs/plan.md](doc
 
 | Directory | Contents |
 |---|---|
-| `client/` | The Mac monitoring client (the original thermomon script). It becomes the first API client in Phase 1 of the plan. |
+| `client/` | `hallclient.py`, the Mac monitoring client (the original thermomon script), which reports to the server with `--api`. |
 | `firmware/` | Firmware for the M5StickC Plus2 kit, with the build and flash process. |
 | `server/` | The API, SQLite storage, admin tool, and staff page. |
 | `docs/` | The project plan and design notes. |

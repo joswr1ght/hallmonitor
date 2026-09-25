@@ -14,15 +14,20 @@ before starting work and update it when a decision changes.
 - Server: Python API behind the existing Apache on hasborg hosted at hallmonitor.willhackforsushi.com
     - SQLite in WAL mode, one opaque bearer
     - token per kit (stored hashed), command-line admin tool
+    - Flask under waitress on 127.0.0.1, run by systemd, reached through Apache `mod_proxy`
+- Staff page: one shared staff password; everyone sees all rooms; last room viewed kept in a cookie.
+- Kits are labeled by course and instructor (no events or deployments), set at provisioning and
+  changeable from the setup portal. Charts: 24-hour main, 72-hour and 7-day below, in the viewer's
+  time zone.
+- Setup portal network is WPA2 with a random per-session password on the LCD.
 - Govee decoders are a per-model table so a replacement model is one new entry.
 
 ## Next step
 
-Phase 1 in `docs/plan.md`: build the server API, schema, admin tool, and staff page, then add an
-`--api` publish mode to `client/thermomon.py`. The firmware toolchain (Arduino core or MicroPython)
-is still open.
+Phase 1 in `docs/plan.md` is built and deployed; what remains is running Josh's class on
+`client/hallclient.py run --api`, starting with the Govee verification steps listed under Phase 1. Phase 2 (prototype kit) is next. The firmware toolchain (Arduino core or
+MicroPython) is still open.
 
 ## Conventions
 
-- `client/thermomon.py` keeps its name until the Phase 1 changes; rename it then.
 - Docs follow Josh Style.

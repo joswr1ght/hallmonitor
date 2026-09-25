@@ -8,9 +8,14 @@
 The Govee H5074 and H5075 broadcast temperature and humidity in BLE advertisements, so no pairing or
 GATT connection is needed and the Govee phone app can keep running at the same time.
 
-    uv run thermomon.py scan          # one discovery cycle, print everything Govee found
-    uv run thermomon.py run --once    # one scan, render the page, rsync it
-    uv run thermomon.py run           # the 5-minute publish loop
+    uv run hallclient.py scan          # one discovery cycle, print everything Govee found
+    uv run hallclient.py run --once    # one scan, render the page, rsync it
+    uv run hallclient.py run           # the 5-minute publish loop
+    uv run hallclient.py run --api https://hallmonitor.willhackforsushi.com   # upload to the server
+
+With --api, readings go to the hallmonitor server instead of rsync. The kit token (from the server's
+add-kit command) is read from state/api-token, and readings that fail to upload wait in
+state/queue.json until the next upload succeeds.
 """
 
 import argparse
@@ -22,6 +27,8 @@ import os
 import struct
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -50,8 +57,12 @@ HERE = Path(__file__).resolve().parent
 STATE_DIR = HERE / "state"
 OUT_DIR = HERE / "out"
 HISTORY_PATH = STATE_DIR / "history.json"
+TOKEN_PATH = STATE_DIR / "api-token"
+QUEUE_PATH = STATE_DIR / "queue.json"
+# The server accepts at most this many readings per request.
+MAX_BATCH = 2000
 
-log = logging.getLogger("thermomon")
+log = logging.getLogger("hallclient")
 
 
 @dataclass
@@ -198,13 +209,13 @@ class Listener:
 
 # --- history ---------------------------------------------------------------------------------------
 
-def load_history() -> list[dict]:
-    if not HISTORY_PATH.exists():
+def load_history(path: Path = HISTORY_PATH) -> list[dict]:
+    if not path.exists():
         return []
     try:
-        data = json.loads(HISTORY_PATH.read_text())
+        data = json.loads(path.read_text())
     except (json.JSONDecodeError, OSError) as exc:
-        log.warning("could not read %s (%s); starting a fresh history", HISTORY_PATH, exc)
+        log.warning("could not read %s (%s); starting fresh", path, exc)
         return []
     return data if isinstance(data, list) else []
 
@@ -670,6 +681,46 @@ def publish(dest: str) -> bool:
     return True
 
 
+def upload(api: str, token: str, reading: Reading) -> bool:
+    """Queue the reading and POST the queue to the server. Returns True if the queue was sent.
+
+    The queue is pruned to the same week the history keeps, so a long outage cannot grow it without
+    bound. The server ignores readings it already has, so resending after a lost response is safe.
+    """
+    now = datetime.now(timezone.utc)
+    queue = prune(load_history(QUEUE_PATH), now)
+    queue.append({
+        "ts": (reading.taken or now).isoformat(),
+        "celsius": round(reading.celsius, 2),
+        "humidity": round(reading.humidity, 1),
+        "battery": reading.battery,
+        "rssi": reading.rssi,
+    })
+    write_atomic(QUEUE_PATH, json.dumps(queue))
+
+    batch = queue[:MAX_BATCH]
+    request = urllib.request.Request(f"{api.rstrip('/')}/api/v1/readings", method="POST",
+                                     data=json.dumps({"readings": batch}).encode(),
+                                     headers={"Authorization": f"Bearer {token}",
+                                              "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.load(response)
+    except urllib.error.HTTPError as exc:
+        log.error("upload to %s failed: HTTP %d %s", api, exc.code, exc.read()[:200].decode(errors="replace"))
+        return False
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        log.warning("upload to %s failed (%s); %d reading(s) queued", api, exc, len(queue))
+        return False
+
+    # Rejected readings would be rejected again, so they leave the queue along with the stored ones.
+    for item in result.get("rejected", []):
+        log.warning("server rejected %s: %s", batch[item["index"]]["ts"], item["error"])
+    write_atomic(QUEUE_PATH, json.dumps(queue[len(batch):]))
+    log.info("uploaded %d reading(s) to %s (%d new)", len(batch), api, result.get("stored", 0))
+    return True
+
+
 async def cycle(listener: Listener, args, after: datetime | None) -> Reading | None:
     """Render and publish the newest reading heard since `after`. Returns it, or None on a miss."""
     reading = await listener.wait_fresh(after, args.scan_timeout)
@@ -695,6 +746,8 @@ async def cycle(listener: Listener, args, after: datetime | None) -> Reading | N
 
     if args.no_publish:
         log.info("rendered to %s (publishing skipped)", OUT_DIR)
+    elif args.api:
+        upload(args.api, args.token, reading)
     else:
         publish(args.dest)
     return reading
@@ -741,7 +794,7 @@ async def run_loop(args) -> int:
     async with Listener(args.name_match) as listener:
         if args.once:
             return 0 if await cycle(listener, args, None) else 1
-        log.info("polling every %ds, publishing to %s", args.interval, args.dest)
+        log.info("polling every %ds, publishing to %s", args.interval, args.api or args.dest)
         after = None
         while True:
             try:
@@ -758,6 +811,12 @@ async def run_loop(args) -> int:
 
 
 def cmd_run(args) -> int:
+    if args.api:
+        try:
+            args.token = TOKEN_PATH.read_text().strip()
+        except OSError as exc:
+            print(f"--api needs the kit token in {TOKEN_PATH}: {exc}", file=sys.stderr)
+            return 1
     return asyncio.run(run_loop(args))
 
 
@@ -785,6 +844,8 @@ def main() -> int:
     run.add_argument("--room-label", default=DEFAULT_ROOM_LABEL,
                      help="heading shown on the page")
     run.add_argument("--dest", default=DEFAULT_DEST, help="rsync destination")
+    run.add_argument("--api", metavar="URL",
+                     help="upload to the hallmonitor server at URL instead of rsyncing the page")
     run.add_argument("--no-publish", action="store_true",
                      help="render locally without rsyncing")
     run.set_defaults(func=cmd_run)
