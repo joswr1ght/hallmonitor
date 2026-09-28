@@ -5,15 +5,15 @@
 # ///
 """Provision a hallmonitor kit over USB: flash the firmware, create the kit on the server, and load its settings.
 
-    uv run provision.py --course SEC504 --instructor "Josh Wright"      # a new kit
-    uv run provision.py --course SEC504 --instructor "Josh Wright" --sensor Govee_H5074_67B3
+    uv run provision.py --instructor "Josh Wright"                      # a new kit
+    uv run provision.py --instructor "Josh Wright" --sensor Govee_H5074_67B3
     uv run provision.py --update                                        # resend networks.json to a kit
-    uv run provision.py --update --instructor "Another Instructor"      # and change its label
+    uv run provision.py --update --instructor "Another Instructor"      # and change its instructor
 
-A new kit is flashed, created on the server with `add-kit` over SSH, and sent its token, label,
+A new kit is flashed, created on the server with `add-kit` over SSH, and sent its token, instructor,
 and the Wi-Fi networks in networks.json. Without --sensor, the script lists the Govee sensors the
 kit hears, strongest first, and asks which one to pair. --update skips the flash and the server,
-and sends only the networks and any label or sensor given.
+and sends only the networks and any instructor or sensor given.
 """
 
 import argparse
@@ -111,9 +111,9 @@ def load_networks() -> list[dict]:
     return [{"ssid": n["ssid"], "psk": n["psk"]} for n in networks]
 
 
-def create_kit(course: str, instructor: str, sensor: str | None) -> tuple[int, str]:
+def create_kit(instructor: str, sensor: str | None) -> tuple[int, str]:
     """Run add-kit on the server and return the new kit's ID and token."""
-    args = ["add-kit", "--course", course, "--instructor", instructor]
+    args = ["add-kit", "--instructor", instructor]
     if sensor:
         args += ["--sensor", sensor]
     remote = ADMIN[-1] + " " + shlex.join(args)
@@ -145,16 +145,15 @@ def pick_sensor(kit: Kit) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--course", help="course number, for example SEC504")
     parser.add_argument("--instructor", help="instructor name")
     parser.add_argument("--sensor", help="Govee sensor name; without it, pick from the sensors the kit hears")
     parser.add_argument("--port", help="serial port (default: find the kit on USB)")
     parser.add_argument("--update", action="store_true",
-                        help="resend networks and any given label to an already provisioned kit")
+                        help="resend networks and any given instructor to an already provisioned kit")
     parser.add_argument("--no-flash", action="store_true", help="skip flashing, for a kit already running the firmware")
     args = parser.parse_args()
-    if not args.update and not (args.course and args.instructor):
-        parser.error("a new kit needs --course and --instructor")
+    if not args.update and not args.instructor:
+        parser.error("a new kit needs --instructor")
 
     networks = load_networks()
     port = args.port or find_port()
@@ -164,7 +163,7 @@ def main() -> int:
     kit = Kit(port)
     state = kit.wait_ready()
     settings = {"networks": networks}
-    for key in ("course", "instructor", "sensor"):
+    for key in ("instructor", "sensor"):
         if getattr(args, key):
             settings[key] = getattr(args, key)
 
@@ -176,7 +175,7 @@ def main() -> int:
         if state.get("token_set"):
             print(f"Note: this kit was kit {state.get('kit_id')}. It becomes a new kit; revoke the old one on the "
                   "server if nothing else uses it.")
-        kit_id, token = create_kit(args.course, args.instructor, args.sensor)
+        kit_id, token = create_kit(args.instructor, args.sensor)
         print(f"Created kit {kit_id} on the server.")
         settings.update(kit_id=kit_id, server=SERVER_URL, token=token)
         kit.configure(settings)
@@ -188,7 +187,7 @@ def main() -> int:
     time.sleep(2)
     state = kit.wait_ready()
     networks_loaded = len(state.get("networks", []))
-    print(f"\nKit {state.get('kit_id')}: {state.get('course')} / {state.get('instructor')}, "
+    print(f"\nKit {state.get('kit_id')}: {state.get('instructor')}, "
           f"sensor {state.get('sensor') or '(none)'}, {networks_loaded} Wi-Fi networks")
     if not state.get("complete"):
         print("The kit is missing settings; run `show` in `pio device monitor` to see which.")

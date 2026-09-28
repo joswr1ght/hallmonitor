@@ -39,6 +39,7 @@ The first build downloads the ESP32 toolchain and takes a few minutes. The libra
 | `src/govee.*` | Continuous BLE scan and the Govee decoder table, ported from `client/hallclient.py` |
 | `src/reporter.*` | Wi-Fi, the clock, the readings queue, and HTTPS uploads |
 | `src/display.*` | The status screen |
+| `src/power.*` | USB or battery power, and the smoothed battery level |
 | `src/portal.*` | The setup portal |
 | `src/certs.h` | The Let's Encrypt root certificates the kit trusts |
 
@@ -47,19 +48,19 @@ The first build downloads the ESP32 toolchain and takes a few minutes. The libra
 `provision.py` sets up a kit in one command. With the kit plugged in over USB-C and turned on:
 
 ```sh
-uv run provision.py --course SEC504 --instructor "Josh Wright"
+uv run provision.py --instructor "Josh Wright"
 ```
 
 The script finds the kit on USB, flashes the firmware, creates the kit on the server with
-`add-kit` over SSH, and sends the kit its ID, token, label, and every network in `networks.json`.
+`add-kit` over SSH, and sends the kit its ID, token, instructor, and every network in `networks.json`.
 It then lists the Govee sensors the kit hears, strongest first, and asks which one to pair; pass
 `--sensor Govee_H5074_67B3` to skip the question. Last, it reboots the kit and prints the kit ID to
 write on the kit and its sensor. The token goes from the server to the kit without being saved or
 shown anywhere else.
 
 After `networks.json` changes, `--update` resends the list to a kit that is already provisioned,
-without flashing or touching the server. `--update` also accepts `--course`, `--instructor`, and
-`--sensor` to change the label or the paired sensor. `--port` picks the serial port when more than
+without flashing or touching the server. `--update` also accepts `--instructor` and `--sensor`
+to change the instructor or the paired sensor. `--port` picks the serial port when more than
 one is plugged in, and `--no-flash` skips flashing a kit that already runs the current firmware.
 
 Provisioning a kit that already has settings creates a new kit on the server. Revoke the old kit
@@ -74,7 +75,7 @@ and each command answers with one line of JSON:
 |---|---|
 | `show` | Print the settings, without the token or network passwords |
 | `sensors` | List the Govee sensors heard in the past 15 minutes, strongest first |
-| `config {json}` | Set any of `kit_id`, `server`, `token`, `course`, `instructor`, `sensor`, and `networks` |
+| `config {json}` | Set any of `kit_id`, `server`, `token`, `instructor`, `sensor`, and `networks` |
 | `reboot` | Restart the kit, which it needs to pick up new Wi-Fi networks |
 
 `provision.py` uses these commands. To provision a kit by hand instead, create it on the server,
@@ -82,7 +83,7 @@ then paste one `config` line with the token
 that `add-kit` printed, and reboot:
 
 ```
-config {"kit_id": 1, "server": "https://hallmonitor.willhackforsushi.com", "token": "...", "course": "SEC504", "instructor": "Josh Wright", "sensor": "Govee_H5074_67B3", "networks": [{"ssid": "SANS", "psk": "..."}]}
+config {"kit_id": 1, "server": "https://hallmonitor.willhackforsushi.com", "token": "...", "instructor": "Josh Wright", "sensor": "Govee_H5074_67B3", "networks": [{"ssid": "SANS", "psk": "..."}]}
 reboot
 ```
 
@@ -108,13 +109,13 @@ usually open the setup page on their own after joining; otherwise, browse to `ht
 
 The page has four sections:
 
-* **Status**: the label, the paired sensor's reading, the last upload, and the queued readings.
+* **Status**: the instructor, the paired sensor's reading, the last upload, and the queued readings.
 * **Wi-Fi**: the saved networks with their signal strength, and a form to add a network or change
   the password of a saved one. The kit tests the password before saving; a checkbox saves it anyway
   for a network that is out of range. Networks set here are marked on the kit, and the server's
   list never replaces them.
 * **Sensor**: every Govee sensor heard in the past 15 minutes, strongest first, with its reading.
-* **Label**: the course and instructor shown on the staff page.
+* **Instructor**: the instructor name shown on the staff page.
 
 Changes save as they are made. A short press of the main button, the Restart button on the page,
 or 10 minutes without activity restarts the kit, which then reconnects with its saved networks.

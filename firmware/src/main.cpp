@@ -7,6 +7,7 @@
 #include "display.h"
 #include "govee.h"
 #include "portal.h"
+#include "power.h"
 #include "reporter.h"
 
 // Long enough for a config line carrying the full SANS class network list with room to grow.
@@ -46,6 +47,7 @@ void setup() {
 void loop() {
     M5.update();
     readSerial();
+    powerTick();
     if (portalActive()) {
         portalTick();
     } else if (M5.BtnA.pressedFor(3000)) {

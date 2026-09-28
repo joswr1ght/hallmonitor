@@ -435,7 +435,7 @@ def login_page(error: str | None, next_url: str) -> str:
 
 
 def room_name(room: dict) -> str:
-    return f"{room['course']} \u00b7 {room['instructor']}"
+    return room["instructor"]
 
 
 def picker_html(rooms: list[dict], current: int | None) -> str:
@@ -454,7 +454,7 @@ def rooms_page(rooms: list[dict]) -> str:
     else:
         content = '<p class="age">No kits have reported in the past day.</p>'
     return page("hallmonitor rooms", f"""<main>
-  <h1>Choose a room</h1>
+  <h1>Choose an instructor</h1>
   {content}
 </main>
 <footer><p><a href="/logout">Sign out</a></p></footer>""", refresh=True)

@@ -12,7 +12,7 @@
 static const uint32_t IDLE_MS = 10 * 60 * 1000;
 // How long to wait while testing a network's password before calling it a failure.
 static const uint32_t TEST_MS = 15 * 1000;
-// Longest course or instructor name the server accepts (MAX_LABEL in server/hallmonitor.py).
+// Longest instructor name the server accepts (MAX_LABEL in server/hallmonitor.py).
 static const size_t MAX_LABEL = 40;
 #ifdef PLUS2_BUZZER
 // The Plus2's passive buzzer. Arduino's tone() drives it directly; on the Plus2, M5Unified's
@@ -132,7 +132,7 @@ static void handleRoot() {
     if (!notice.isEmpty()) p += "<p class=notice>" + html(notice) + "</p>";
 
     // Status
-    p += "<h2>Status</h2><p>" + html(config.course + " " + config.instructor) + "<br>";
+    p += "<h2>Status</h2><p>" + html(config.instructor) + "<br>";
     GoveeReading r;
     if (goveeLatest(config.sensor, 15 * 60 * 1000, r)) {
         p += "Sensor " + html(r.name) + ": " + String(r.celsius * 9 / 5 + 32, 1) + "&#176;F, " +
@@ -180,10 +180,9 @@ static void handleRoot() {
     p += "<button>Pair this sensor</button></form><p class=muted>Place the sensor next to the kit so it "
          "tops the list. <a href='/'>Refresh</a></p>";
 
-    // Label
-    p += "<h2>Label</h2><form method=post action=/label><label>Course<input type=text name=course value='" +
-         html(config.course) + "'></label><label>Instructor<input type=text name=instructor value='" +
-         html(config.instructor) + "'></label><button>Save label</button></form>";
+    // Instructor
+    p += "<h2>Instructor</h2><form method=post action=/label><label>Name<input type=text name=instructor value='" +
+         html(config.instructor) + "'></label><button>Save name</button></form>";
 
     p += "<h2>Finish</h2><form method=post action=/done><button>Restart and reconnect</button></form>"
          "<p class=muted>Changes are saved as they are made. The kit restarts on its own after 10 idle "
@@ -268,17 +267,15 @@ static void handleSensor() {
 
 static void handleLabel() {
     lastActivityMs = millis();
-    String course = server.arg("course"), instructor = server.arg("instructor");
-    course.trim();
+    String instructor = server.arg("instructor");
     instructor.trim();
-    if (course.isEmpty() || instructor.isEmpty() || course.length() > MAX_LABEL || instructor.length() > MAX_LABEL) {
-        notice = "Enter a course and an instructor, each up to " + String(MAX_LABEL) + " characters.";
+    if (instructor.isEmpty() || instructor.length() > MAX_LABEL) {
+        notice = "Enter an instructor name of up to " + String(MAX_LABEL) + " characters.";
         return redirectHome();
     }
-    config.course = course;
     config.instructor = instructor;
     saveConfig();
-    notice = "Label saved: " + course + " " + instructor + ".";
+    notice = "Instructor saved: " + instructor + ".";
     redirectHome();
 }
 

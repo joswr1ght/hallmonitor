@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "govee.h"
+#include "power.h"
 #include "reporter.h"
 
 // A reading older than this is shown as stale, matching the staff page's 12-minute threshold.
@@ -62,8 +63,7 @@ void displayTick() {
         y += 16;
     };
 
-    String label = config.course + " " + config.instructor;
-    line(label.length() > 1 ? label : "No course or instructor set", TFT_LIGHTGREY);
+    line(config.instructor.isEmpty() ? "No instructor set" : config.instructor, TFT_LIGHTGREY);
 
     if (config.sensor.isEmpty()) {
         line("No sensor paired", TFT_ORANGE);
@@ -91,6 +91,15 @@ void displayTick() {
         line("Not sent yet, " + String(reporter.queued) + " queued");
     }
 
+    // The kit's own power, right-aligned on the kit ID line. Plugged in, the level reads the charging
+    // voltage, so it runs high; it is shown only as a rough guide to how far charging has come.
+    int level = powerBatteryLevel();
+    bool usb = powerOnUsb();
+    String percent = level >= 0 ? " " + String(level) + "%" : "";
+    canvas.setTextDatum(top_right);
+    canvas.setTextColor(!usb && level >= 0 && level <= 20 ? TFT_ORANGE : TFT_DARKGREY);
+    canvas.drawString(usb ? "USB" + percent : level >= 0 ? "Battery" + percent : "", canvas.width() - 4, y);
+    canvas.setTextDatum(top_left);
     line("Kit " + String(config.kitId), TFT_DARKGREY);
     canvas.pushSprite(0, 0);
 }

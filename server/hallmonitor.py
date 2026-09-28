@@ -5,7 +5,7 @@
 # ///
 """hallmonitor server: the kit API, SQLite storage, and the admin commands.
 
-    uv run hallmonitor.py add-kit --course SEC504 --instructor "Josh Wright"   # prints the token once
+    uv run hallmonitor.py add-kit --instructor "Josh Wright"                 # prints the token once
     uv run hallmonitor.py set-kit 1 --instructor "Another Instructor"
     uv run hallmonitor.py set-networks < ../firmware/networks.json   # the Wi-Fi list kits fetch
     uv run hallmonitor.py set-staff-password                        # prompts for the shared password
@@ -48,17 +48,17 @@ ROOM_COOKIE = "room"
 TZ_COOKIE = "tz"
 # A kit appears in the room drop-down while it has reported within this window.
 ACTIVE_HOURS = 24
-# Longest course or instructor name a kit can report from its setup portal.
+# Longest instructor name a kit can report from its setup portal.
 MAX_LABEL = 40
 # Readings older than this are deleted, checked at most once a day when a kit uploads.
 RETENTION_DAYS = 90
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS kits     (id INTEGER PRIMARY KEY, course TEXT NOT NULL, instructor TEXT NOT NULL,
-                                     sensor TEXT, token_hash TEXT UNIQUE NOT NULL, revoked_at TEXT);
+CREATE TABLE IF NOT EXISTS kits     (id INTEGER PRIMARY KEY, instructor TEXT NOT NULL, sensor TEXT,
+                                     token_hash TEXT UNIQUE NOT NULL, revoked_at TEXT);
 CREATE TABLE IF NOT EXISTS readings (kit_id INTEGER NOT NULL REFERENCES kits, ts TEXT NOT NULL,
                                      celsius REAL NOT NULL, humidity REAL NOT NULL, battery INTEGER,
-                                     rssi INTEGER, PRIMARY KEY (kit_id, ts)) WITHOUT ROWID;
+                                     rssi INTEGER, kit_battery INTEGER, PRIMARY KEY (kit_id, ts)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
@@ -76,6 +76,12 @@ def init_db(path: Path) -> None:
     with connect(path) as conn:
         conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(SCHEMA)
+        # Databases created before kits reported their own battery lack the column.
+        if "kit_battery" not in {row["name"] for row in conn.execute("PRAGMA table_info(readings)")}:
+            conn.execute("ALTER TABLE readings ADD COLUMN kit_battery INTEGER")
+        # Kits were once labeled by course as well; an instructor now teaches any course with one kit.
+        if "course" in {row["name"] for row in conn.execute("PRAGMA table_info(kits)")}:
+            conn.execute("ALTER TABLE kits DROP COLUMN course")
         # The key that signs staff session cookies. Deleting it signs every staff member out.
         conn.execute("INSERT OR IGNORE INTO settings VALUES ('secret_key', ?)", (secrets.token_hex(32),))
 
@@ -95,7 +101,7 @@ def utc_text(when: datetime) -> str:
     return when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def parse_reading(item) -> tuple[str, float, float, int | None, int | None]:
+def parse_reading(item) -> tuple[str, float, float, int | None, int | None, int | None]:
     """Validate one uploaded reading, raising ValueError with a reason if it is unusable."""
     if not isinstance(item, dict):
         raise ValueError("reading is not an object")
@@ -107,9 +113,9 @@ def parse_reading(item) -> tuple[str, float, float, int | None, int | None]:
     celsius, humidity = float(item["celsius"]), float(item["humidity"])
     if not (-40 <= celsius <= 85 and 0 <= humidity <= 100):
         raise ValueError("celsius or humidity out of range")
-    battery, rssi = item.get("battery"), item.get("rssi")
-    return (utc_text(when), celsius, humidity,
-            None if battery is None else int(battery), None if rssi is None else int(rssi))
+    battery, rssi, kit_battery = item.get("battery"), item.get("rssi"), item.get("kit_battery")
+    return (utc_text(when), celsius, humidity, None if battery is None else int(battery),
+            None if rssi is None else int(rssi), None if kit_battery is None else int(kit_battery))
 
 
 def fingerprint(password_hash: str) -> str:
@@ -118,7 +124,7 @@ def fingerprint(password_hash: str) -> str:
 
 
 def parse_labels(body: dict) -> dict[str, str]:
-    """Return the course, instructor, and sensor a kit reported from its setup portal, if any.
+    """Return the instructor and sensor a kit reported from its setup portal, if any.
 
     Values that are not short non-empty strings are ignored, so a bad label never costs a batch of
     readings.
@@ -126,7 +132,7 @@ def parse_labels(body: dict) -> dict[str, str]:
     kit = body.get("kit")
     if not isinstance(kit, dict):
         return {}
-    return {key: kit[key].strip() for key in ("course", "instructor", "sensor")
+    return {key: kit[key].strip() for key in ("instructor", "sensor")
             if isinstance(kit.get(key), str) and 0 < len(kit[key].strip()) <= MAX_LABEL}
 
 
@@ -190,7 +196,8 @@ def create_app(db_path: Path, secure_cookies: bool = True) -> Flask:
                 # The key comes from the fixed tuple in parse_labels, never from the request.
                 conn.execute(f"UPDATE kits SET {key} = ? WHERE id = ?", (value, kit))
             before = conn.total_changes
-            conn.executemany("INSERT OR IGNORE INTO readings VALUES (?, ?, ?, ?, ?, ?)", rows)
+            conn.executemany("INSERT OR IGNORE INTO readings (kit_id, ts, celsius, humidity, battery, rssi, "
+                             "kit_battery) VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
             stored = conn.total_changes - before
         # Duplicates are a kit resending a batch after a lost response, so they count as success.
         prune_readings()
@@ -229,16 +236,16 @@ def create_app(db_path: Path, secure_cookies: bool = True) -> Flask:
         """Kits that reported within ACTIVE_HOURS, ordered for the drop-down."""
         cutoff = utc_text(datetime.now(timezone.utc) - timedelta(hours=ACTIVE_HOURS))
         return [dict(r) for r in db().execute(
-            "SELECT k.id, k.course, k.instructor, max(r.ts) AS last FROM kits k JOIN readings r ON r.kit_id = k.id "
-            "WHERE k.revoked_at IS NULL AND r.ts >= ? GROUP BY k.id ORDER BY k.course, k.instructor, k.id",
+            "SELECT k.id, k.instructor, max(r.ts) AS last FROM kits k JOIN readings r ON r.kit_id = k.id "
+            "WHERE k.revoked_at IS NULL AND r.ts >= ? GROUP BY k.id ORDER BY k.instructor, k.id",
             (cutoff,))]
 
     def get_kit(room_id: int) -> dict | None:
-        row = db().execute("SELECT id, course, instructor, sensor FROM kits WHERE id = ?", (room_id,)).fetchone()
+        row = db().execute("SELECT id, instructor, sensor FROM kits WHERE id = ?", (room_id,)).fetchone()
         return dict(row) if row else None
 
     def room_readings(room_id: int, since: datetime) -> list:
-        return db().execute("SELECT ts, celsius, humidity, battery, rssi FROM readings "
+        return db().execute("SELECT ts, celsius, humidity, battery, rssi, kit_battery FROM readings "
                             "WHERE kit_id = ? AND ts >= ? ORDER BY ts", (room_id, utc_text(since))).fetchall()
 
     def viewer_tz():
@@ -330,9 +337,9 @@ def create_app(db_path: Path, secure_cookies: bool = True) -> Flask:
 def cmd_add_kit(args) -> int:
     token = secrets.token_urlsafe(32)
     with connect(args.db) as conn:
-        cur = conn.execute("INSERT INTO kits (course, instructor, sensor, token_hash) VALUES (?, ?, ?, ?)",
-                           (args.course, args.instructor, args.sensor, hash_token(token)))
-    print(f"kit {cur.lastrowid}: {args.course} / {args.instructor}")
+        cur = conn.execute("INSERT INTO kits (instructor, sensor, token_hash) VALUES (?, ?, ?)",
+                           (args.instructor, args.sensor, hash_token(token)))
+    print(f"kit {cur.lastrowid}: {args.instructor}")
     print(f"token (shown once, store it on the kit): {token}")
     return 0
 
@@ -350,13 +357,13 @@ def cmd_revoke(args) -> int:
 
 def cmd_delete_kit(args) -> int:
     with connect(args.db) as conn:
-        kit = conn.execute("SELECT course, instructor FROM kits WHERE id = ?", (args.kit_id,)).fetchone()
+        kit = conn.execute("SELECT instructor FROM kits WHERE id = ?", (args.kit_id,)).fetchone()
         if kit is None:
             print(f"kit {args.kit_id} not found", file=sys.stderr)
             return 1
         count = conn.execute("SELECT COUNT(*) FROM readings WHERE kit_id = ?", (args.kit_id,)).fetchone()[0]
         if not args.yes:
-            print(f"kit {args.kit_id} ({kit[0]} / {kit[1]}) has {count} readings; rerun with --yes to delete them "
+            print(f"kit {args.kit_id} ({kit[0]}) has {count} readings; rerun with --yes to delete them "
                   "and the kit", file=sys.stderr)
             return 1
         conn.execute("DELETE FROM readings WHERE kit_id = ?", (args.kit_id,))
@@ -366,10 +373,9 @@ def cmd_delete_kit(args) -> int:
 
 
 def cmd_set_kit(args) -> int:
-    changes = {k: v for k, v in (("course", args.course), ("instructor", args.instructor),
-                                 ("sensor", args.sensor)) if v is not None}
+    changes = {k: v for k, v in (("instructor", args.instructor), ("sensor", args.sensor)) if v is not None}
     if not changes:
-        print("nothing to change; pass --course, --instructor, or --sensor", file=sys.stderr)
+        print("nothing to change; pass --instructor or --sensor", file=sys.stderr)
         return 1
     with connect(args.db) as conn:
         cur = conn.execute(f"UPDATE kits SET {', '.join(k + ' = ?' for k in changes)} WHERE id = ?",
@@ -422,7 +428,7 @@ def cmd_list(args) -> int:
                             "FROM kits k ORDER BY k.id").fetchall()
     for k in kits:
         state = f"revoked {k['revoked_at']}" if k["revoked_at"] else "active"
-        print(f"{k['id']:>3}  {k['course']:<8} {k['instructor']:<20} sensor={k['sensor'] or '-'}  {state}  "
+        print(f"{k['id']:>3}  {k['instructor']:<20} sensor={k['sensor'] or '-'}  {state}  "
               f"last={k['last'] or '-'}")
     return 0
 
@@ -453,14 +459,12 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("add-kit", help="add a kit and print its token")
-    p.add_argument("--course", required=True, help="course number, for example SEC504")
     p.add_argument("--instructor", required=True, help="instructor name")
     p.add_argument("--sensor", help="paired Govee sensor name or Bluetooth address")
     p.set_defaults(func=cmd_add_kit)
 
-    p = sub.add_parser("set-kit", help="change a kit's course, instructor, or sensor")
+    p = sub.add_parser("set-kit", help="change a kit's instructor or sensor")
     p.add_argument("kit_id", type=int)
-    p.add_argument("--course")
     p.add_argument("--instructor")
     p.add_argument("--sensor")
     p.set_defaults(func=cmd_set_kit)

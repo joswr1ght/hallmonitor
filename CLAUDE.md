@@ -18,9 +18,9 @@ before starting work and update it when a decision changes.
     - Flask under waitress on 127.0.0.1, run by systemd, reached through Apache `mod_proxy`
 - Readings are kept 90 days. No login rate limiting for now.
 - Staff page: one shared staff password; everyone sees all rooms; last room viewed kept in a cookie.
-- Kits are labeled by course and instructor (no events or deployments), set at provisioning and
-  changeable from the setup portal. Charts: 24-hour main, 72-hour and 7-day below, in the viewer's
-  time zone.
+- Kits are labeled by instructor only (no course, events, or deployments), set at provisioning and
+  changeable from the setup portal. A kit works in any class with no setup; the portal is for
+  recovery. Charts: 24-hour main, 72-hour and 7-day below, in the viewer's time zone.
 - Setup portal network is WPA2 with a random per-session password on the LCD.
 - Once deployed, an instructor's portal edits are the source of truth for their kit; server or
   provisioning lists never override instructor-edited networks.
@@ -31,8 +31,10 @@ before starting work and update it when a decision changes.
 ## Next step
 
 Phase 1 in `docs/plan.md` is built, deployed, and verified. Phase 2 (prototype kit) is in progress
-on an M5StickS3 (kit 2): it is provisioned and uploading readings. The setup portal has not been
-tested on the board, and OTA is not started.
+on an M5StickS3 (kit 1 since production was reset on 2026-09-28): it is provisioned and uploading
+readings. The setup portal starts on the board, but its pages are not yet tested, and OTA is not
+started. A battery run-down test and the week-on-battery goal are in H6 of `docs/plan.md`. User
+documentation lives in `docs/user-guide.md`.
 
 ## Conventions
 

@@ -2,7 +2,7 @@
 
 The hallmonitor server: an API that accepts readings from kits, stores them in SQLite, and renders
 the staff page with a room drop-down. It also includes a command-line admin tool for issuing and
-revoking kit tokens and labeling each kit with its course and instructor.
+revoking kit tokens and labeling each kit with its instructor.
 
 Working and deployed: the kit upload endpoint, the staff page, the read endpoints, and the admin
 commands. See "Server and API" and Phase 1 in [../docs/plan.md](../docs/plan.md).
@@ -14,14 +14,14 @@ commands. The database defaults to `server/state/hallmonitor.db` and is created 
 Event staff and instructors sign in with one shared staff password, set with
 `set-staff-password`. Changing the password signs everyone out. After signing in, staff pick a room
 from the drop-down, and a cookie remembers the last room viewed. The drop-down lists kits that
-reported in the past 24 hours, labeled by course and instructor; a quiet kit stays viewable by its
+reported in the past 24 hours, labeled by instructor; a quiet kit stays viewable by its
 direct link. Times render in the viewer's time zone, which the page reports in a cookie.
 
-A kit can change its own label by including it with an upload, which is how the setup portal will
-report a new course or instructor:
+A kit can change its own label by including it with an upload, which is how the setup portal
+reports a new instructor:
 
 ```json
-{"kit": {"course": "SEC504", "instructor": "Josh Wright"}, "readings": [...]}
+{"kit": {"instructor": "Josh Wright"}, "readings": [...]}
 ```
 
 | Method and path | Auth | Purpose |
@@ -49,6 +49,10 @@ curl -X POST https://hallmonitor.willhackforsushi.com/api/v1/readings \
   -d '{"readings": [{"ts": "2026-09-24T12:00:00Z", "celsius": 21.5, "humidity": 44.2,
                      "battery": 90, "rssi": -60}]}'
 ```
+
+In each reading, `battery` is the Govee sensor's battery and `kit_battery` is the kit's own, both
+in percent. Both are optional, and the readings API returns them. A kit sends `kit_battery` only
+while it runs on battery, since on USB the level reads the charging voltage.
 
 The response reports how many readings were stored, how many were duplicates of earlier uploads,
 and which were rejected and why. Duplicates are expected when a kit resends a batch after a lost

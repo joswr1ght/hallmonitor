@@ -22,7 +22,6 @@ void loadConfig() {
     config.kitId = doc["kit_id"] | 0;
     config.server = doc["server"] | "";
     config.token = doc["token"] | "";
-    config.course = doc["course"] | "";
     config.instructor = doc["instructor"] | "";
     config.sensor = doc["sensor"] | "";
     config.networks.clear();
@@ -36,7 +35,6 @@ void saveConfig() {
     doc["kit_id"] = config.kitId;
     doc["server"] = config.server;
     doc["token"] = config.token;
-    doc["course"] = config.course;
     doc["instructor"] = config.instructor;
     doc["sensor"] = config.sensor;
     JsonArray networks = doc["networks"].to<JsonArray>();
@@ -95,7 +93,6 @@ static void showConfig() {
     doc["kit_id"] = config.kitId;
     doc["server"] = config.server;
     doc["token_set"] = !config.token.isEmpty();
-    doc["course"] = config.course;
     doc["instructor"] = config.instructor;
     doc["sensor"] = config.sensor;
     JsonArray networks = doc["networks"].to<JsonArray>();
@@ -140,8 +137,8 @@ void handleSerialCommand(const String& line) {
         Serial.flush();
         ESP.restart();
     } else if (command == "config") {
-        // config {"kit_id": 1, "server": "...", "token": "...", "course": "...", "instructor": "...",
-        //         "sensor": "...", "networks": [{"ssid": "...", "psk": "..."}]}
+        // config {"kit_id": 1, "server": "...", "token": "...", "instructor": "...", "sensor": "...",
+        //         "networks": [{"ssid": "...", "psk": "..."}]}
         // Keys that are left out keep their current values.
         JsonDocument doc;
         if (deserializeJson(doc, arg) || !doc.is<JsonObject>()) {
@@ -151,7 +148,6 @@ void handleSerialCommand(const String& line) {
         if (doc["kit_id"].is<uint32_t>()) config.kitId = doc["kit_id"];
         if (doc["server"].is<const char*>()) config.server = doc["server"].as<const char*>();
         if (doc["token"].is<const char*>()) config.token = doc["token"].as<const char*>();
-        if (doc["course"].is<const char*>()) config.course = doc["course"].as<const char*>();
         if (doc["instructor"].is<const char*>()) config.instructor = doc["instructor"].as<const char*>();
         if (doc["sensor"].is<const char*>()) config.sensor = doc["sensor"].as<const char*>();
         if (doc["networks"].is<JsonArray>()) mergeNetworks(doc["networks"].as<JsonArrayConst>());

@@ -154,31 +154,32 @@ declared as `uv` inline dependencies) behind the Apache and certbot setup alread
 
 | Method and path | Auth | Purpose |
 |---|---|---|
-| `POST /api/v1/readings` | kit token | Batch upload of queued readings, plus the kit's course, instructor, and sensor when they change |
+| `POST /api/v1/readings` | kit token | Batch upload of queued readings, plus the kit's instructor and sensor when they change |
 | `GET /api/v1/config` | kit token | The Wi-Fi list, which kits merge into their own |
 | `GET /api/v1/rooms` | staff | Kits that reported in the past 24 hours, for the drop-down |
 | `GET /api/v1/rooms/{id}/readings?since=` | staff | Readings for charts and a future Slack bot |
 | `GET /rooms` and `/rooms/{id}` | staff | The rendered staff page |
 
-A command-line admin tool on the server issues and revokes kit tokens and sets each kit's course
-and instructor. That avoids building an admin web interface.
+A command-line admin tool on the server issues and revokes kit tokens and sets each kit's
+instructor. That avoids building an admin web interface.
 
 **Schema**
 
 ```sql
-CREATE TABLE kits     (id INTEGER PRIMARY KEY, course TEXT NOT NULL, instructor TEXT NOT NULL,
-                       sensor TEXT, token_hash TEXT UNIQUE NOT NULL, revoked_at TEXT);
+CREATE TABLE kits     (id INTEGER PRIMARY KEY, instructor TEXT NOT NULL, sensor TEXT,
+                       token_hash TEXT UNIQUE NOT NULL, revoked_at TEXT);
 CREATE TABLE readings (kit_id INTEGER NOT NULL REFERENCES kits, ts TEXT NOT NULL,
                        celsius REAL NOT NULL, humidity REAL NOT NULL, battery INTEGER,
-                       rssi INTEGER, PRIMARY KEY (kit_id, ts)) WITHOUT ROWID;
+                       rssi INTEGER, kit_battery INTEGER, PRIMARY KEY (kit_id, ts)) WITHOUT ROWID;
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 ```
 
-A kit is labeled by course and instructor (for example "SEC504 · Josh Wright"), not by event or
-room. An earlier design tied kits to per-event deployments with room names and dates, but that
-would require setup for every event an instructor teaches. Instead, the staff drop-down lists every
-kit that reported in the past 24 hours, and staff find a classroom by course and instructor, which
-the event schedule already lists. The `(kit_id, ts)` primary key makes batch uploads idempotent, so
+A kit is labeled by its instructor (for example "Josh Wright"), not by course, event, or room. An
+earlier design tied kits to per-event deployments with room names and dates, but that would require
+setup for every event an instructor teaches. A later design labeled kits by course as well, but many
+instructors teach more than one course, and the kit should work in any class with no setup.
+Instead, the staff drop-down lists every kit that reported in the past 24 hours, and staff find a
+classroom by instructor, which the event schedule already lists. The `(kit_id, ts)` primary key makes batch uploads idempotent, so
 a kit that resends a batch after a lost response does not create duplicates. The `settings` table
 holds the staff password hash and the key that signs session cookies.
 
@@ -240,12 +241,16 @@ phone hotspot (a fixed SSID and PSK in every kit's list) or a captive-portal set
 kit becomes its own access point and serves a page for entering an SSID and PSK. The hotspot
 fallback is far less code.
 
-**Course and instructor label**
+**Instructor label**
 
-Josh sets each kit's course and instructor name when provisioning it (`add-kit --course SEC504
---instructor "Josh Wright"`). When a kit changes hands, the new instructor updates the label in the
-setup portal (F1), and the kit sends the new label with its next upload. Josh can also change it on
-the server with `set-kit`. No per-event room assignment is needed.
+Decided (2026-09-28): a kit carries only its instructor's name, with no course. An instructor
+takes the kit out of the bag, plugs it into USB, and it works in whatever class they teach. The
+setup portal is for recovery, such as a changed Wi-Fi password, not a step in every class.
+
+Josh sets each kit's instructor name when provisioning it (`add-kit --instructor "Josh Wright"`).
+When a kit changes hands, the new instructor updates the name in the setup portal (F1), and the kit
+sends the new name with its next upload. Josh can also change it on the server with `set-kit`. No
+per-event room assignment is needed.
 
 **Sensor identity**
 
@@ -264,11 +269,12 @@ instructor rebinds the kit through the setup portal (F1).
 The screen is mainly a status display, not a setup menu:
 
 * Current temperature and humidity
-* The course and instructor label
+* The instructor's name
 * Sensor short name and signal strength
 * Connected SSID and Wi-Fi signal strength
 * Time since the last successful upload, and the number of queued readings
 * The device ID, so the instructor can tell Josh which kit has a problem
+* The kit's own battery level, and whether it is charging
 
 These lines answer nearly every "is it working?" question without a laptop.
 
@@ -397,28 +403,104 @@ do; a model that requires a connection or the Govee cloud would not work with th
 
 The Grove port stays unused for now, and the wired sensor is out of scope.
 
-**H6: Power and placement (open)**
+**H6: Power and placement (open; goal: a week on battery)**
 
-The StickC's battery lasts hours, not days, so the kit needs USB power for the whole class. The
-kit needs a USB power supply and a cable long enough to reach an outlet from wherever it sits, and
-it should be somewhere it will not be unplugged for a laptop charger. The Govee should stay within
-reliable Bluetooth range of the kit; the current measurements at a few meters are the only data
-so far.
+Goal (2026-09-28): a kit charged to full lasts a full week of teaching on its battery, six days or
+144 hours. How to get there is not decided. A run-down test of the current firmware from a full
+charge comes first, and its result picks the approach below.
+
+Until then the kit needs USB power for the whole class. The kit needs a USB power supply and a
+cable long enough to reach an outlet from wherever it sits, and it should be somewhere it will not
+be unplugged for a laptop charger. The Govee should stay within reliable Bluetooth range of the
+kit; the current measurements at a few meters are the only data so far.
+
+*The budget.* The StickS3 has a 250 mAh battery, so 144 hours allows an average draw of about
+1.7 mA. The current firmware keeps Wi-Fi connected, scans for BLE half the time, and keeps the
+screen on. Published figures put that at roughly 60 to 90 mA, or 3 to 4 hours; this is an
+estimate, not a measurement.
+
+*The run-down test.* Charge the kit to full, unplug it, and leave it running. Each upload carries
+the kit's own battery level (`kit_battery`), so the server records the discharge curve, and the
+last upload marks the runtime.
+
+*What the research found (2026-09-28):*
+
+* Wi-Fi is the largest cost. A connected ESP32-S3 averages about 38 mA even in modem sleep, and
+  modem sleep is mandatory with BLE running. Auto light sleep would bring that to 1 to 2.5 mA, but
+  continuous BLE scanning leaves too little idle time for it.
+* Between readings, ESP32-S3 deep sleep costs about 0.1 mA for the whole StickS3 (M5Stack's "L2"
+  level). The StickS3's M5PM1 power chip can also cut power entirely (14 µA) and power back on from
+  its own timer, through M5Stack's M5PM1 library rather than M5Unified. A full power-off loses RAM
+  and the clock, and the StickS3 has no RTC chip (see H7), so deep sleep is the likelier choice.
+* A connection and HTTPS upload after a wake takes about 2 to 4 seconds at 100 to 120 mA. Saving
+  the access point's BSSID and channel shortens the join.
+* `M5.Display.sleep()` turns off the backlight and puts the LCD controller to sleep. A StickC Plus2
+  test found the controller's sleep mattered more than the backlight alone.
+* M5Unified reads USB power (VBUS) on the StickS3, so the firmware can tell plugged-in from battery.
+* The H5074's advertising interval decides how long a waking kit must listen. The Mac client
+  measured gaps of 17 to 93 seconds (client/README.md), but the kit itself, scanning actively, heard
+  a new reading every 7 seconds on average over 20 minutes (172 gaps, 2 to 24 seconds, measured
+  2026-09-28). A kit waking at a random moment waits about 5 seconds on average and 24 seconds at
+  worst. The H5074 puts its reading only in the scan response, so the scan must be active.
+* The H5074 measures continuously, not every 5 minutes: the temperature or humidity changed about
+  every 10 seconds in the same test, and Govee's H5075 page quotes a 2-second response.
+* The H5074 also keeps 20 days of history at one reading per minute, which a connection over GATT
+  can download with no Govee cloud (the unencrypted protocol is documented by the GoveeBTTempLogger
+  project, https://github.com/wcbonner/GoveeBTTempLogger). A full 20-day download took about 34
+  seconds there; an hour's worth would take far less. How much the connections drain the H5074's
+  coin cell is not measured.
+
+*Candidate approaches (not decided):*
+
+1. Two modes chosen by USB power: plugged in, the kit runs as it does now; on battery, it switches
+   to a battery-saver mode. The classroom experience stays the same while the kit is plugged in.
+2. Battery-saver mode: deep sleep between readings, readings kept in RTC memory (8 KB survives deep
+   sleep), uploads batched every hour with a fast reconnect, and the screen asleep until a button
+   press shows the status for about 30 seconds. The long press for the setup portal still works.
+3. The sampling interval on battery. With hourly uploads and 75 mA while listening, the estimated
+   average draw and runtime are:
+
+   | Reading every | Typical listen (5 s) | Worst-case listen (24 s) |
+   |---|---|---|
+   | 5 minutes | 1.4 mA, about 7 days | 6.2 mA, about 1.7 days |
+   | 15 minutes | 0.6 mA, about 17 days | 2.2 mA, about 5 days |
+   | 30 minutes | 0.4 mA, about 26 days | 1.2 mA, about 9 days |
+
+   A cap on the listen time (for example 10 seconds, skipping the reading if nothing arrives)
+   keeps the worst case near the typical one.
+4. History download instead of listening: the kit sleeps for an hour, connects to the H5074, and
+   downloads the past hour's one-minute readings. That would give finer data than today's
+   5-minute readings with the radio on for seconds an hour, at the cost of a GATT client in the
+   firmware and an unmeasured drain on the sensor's battery.
+
+On battery, the staff page would lag by up to the upload interval, so the 12-minute stale-reading
+banner would need to know when a kit is in battery-saver mode.
+
+Sources: M5StickS3 specifications and power levels
+(https://docs.m5stack.switch-science.com/en/core/StickS3), M5PM1 timer wake
+(https://docs.m5stack.switch-science.com/en/arduino/m5sticks3/wakeup), ESP32-S3 datasheet
+(https://documentation.espressif.com/esp32-s3_datasheet_en.pdf), ESP-IDF Wi-Fi and BLE low-power
+guides (https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/low-power-mode/),
+and ESP32 reconnect measurements (https://blog.voneicken.com/2018/lp-wifi-esp32-2/).
 
 **H7: Timestamps before time sync (leaning: no readings without a valid clock)**
 
 Readings queued before the kit's first network time sync need a trustworthy timestamp. The StickC
-has an RTC, which keeps time while its battery holds charge. The firmware as written takes no
+Plus2 has an RTC, which keeps time while its battery holds charge. The StickS3 has no RTC chip, so
+on the StickS3 the RTC steps below do nothing, and a kit that loses power must get the time from
+the network again before it records. The firmware as written takes no
 readings until the clock is valid. It sets the clock from NTP, or from the server's HTTP `Date`
 header when a venue blocks NTP, restores it from the RTC at boot, and copies each sync back to the
 RTC. A kit that boots with a flat RTC battery and no network records nothing until it gets online,
 which the prototype should show is rare.
 
-**H8: Bluetooth and Wi-Fi on one radio (open)**
+**H8: Bluetooth and Wi-Fi on one radio (answered)**
 
-The ESP32 shares one radio between BLE scanning and Wi-Fi. That usually works, but the H5074's
-irregular advertising gaps (up to 93 seconds, measured in the README) leave little margin. The
-prototype should log how many advertisements it hears per 5-minute cycle while Wi-Fi is active.
+The ESP32 shares one radio between BLE scanning and Wi-Fi. The Mac client's gaps of up to 93
+seconds between H5074 readings (client/README.md) suggested little margin. Measured on the
+StickS3 with Wi-Fi connected (2026-09-28), the kit heard a reading every 7 seconds on average and
+never went longer than 24 seconds, about 40 readings per 5-minute cycle, so sharing the radio
+leaves plenty of margin.
 
 **H9: Enclosure and labeling (open)**
 
@@ -471,7 +553,7 @@ The portal has four pages:
   already in the list when the venue changes it; and remove a network.
 * Sensor: choose which Govee sensor the kit reports, from a list sorted by signal strength (see
   below).
-* Label: the course number and instructor name shown on the staff page.
+* Instructor: the instructor name shown on the staff page.
 * Status: kit ID, paired sensor, last upload, and queued readings.
 
 **Keeping the Wi-Fi list current**
@@ -486,7 +568,7 @@ server list for every kit.
 Decided (2026-09-24): once a kit is deployed, the instructor's changes are the source of truth for
 that kit. A network the instructor added or edited in the portal is marked on the kit, and a list
 from provisioning or the server never overrides it. Networks the instructor has not touched still
-follow the server list. The kit also reports its course, instructor, and sensor with every upload,
+follow the server list. The kit also reports its instructor and sensor with every upload,
 so the server's record follows the kit.
 
 **Sensor selection**
@@ -520,7 +602,7 @@ since the pages are custom. BLE scanning keeps running while the portal is up, s
 stays fresh; the prototype should confirm the radio handles both (H8). Testing a password can move
 the radio to the tested network's channel, which briefly drops the phone from the portal network.
 
-The kit reports its label and sensor with every upload, but not portal changes to its Wi-Fi list.
+The kit reports its instructor and sensor with every upload, but not portal changes to its Wi-Fi list.
 Josh learns about a new network from the instructor, not from the server, for now.
 
 ## Phased plan
@@ -575,7 +657,11 @@ On the StickS3, 2026-09-28: the firmware flashed and showed the unconfigured sta
 (milestone 1), and `sensors` over serial decoded `Govee_H5074_67B3` at 23.3°C and 57.6% (milestone
 2). Opening the serial port with DTR and RTS dropped put the kit in download mode; `provision.py`
 now leaves both asserted. The kit was then provisioned as kit 2 and uploaded readings to the
-server (milestones 3 and 4). The setup portal (milestone 5) is not yet tested on the board.
+server (milestones 3 and 4). The setup portal (milestone 5) starts on the board: holding the blue
+face button (button A) for 3 seconds beeps and shows the QR code and a random password. Its pages
+are not yet tested. Holding the power button instead puts the StickS3 in download mode with the
+screen dark. esptool's watchdog reset brought it back; M5Stack documents a single press of the power
+button as a reset, which is not yet tested.
 
 **Phase 3: pilot with two or three instructors**
 

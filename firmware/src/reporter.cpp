@@ -15,6 +15,7 @@
 #include "certs.h"
 #include "config.h"
 #include "govee.h"
+#include "power.h"
 
 static const uint32_t INTERVAL_MS = 5 * 60 * 1000;
 static const uint32_t RETRY_MS = 60 * 1000;
@@ -34,6 +35,7 @@ struct Reading {
     float humidity;
     int battery;
     int rssi;
+    int kitBattery;  // the kit's own battery percent on battery power, or -1 on USB or when unknown
 };
 
 ReporterStatus reporter;
@@ -82,7 +84,8 @@ static void sample() {
     GoveeReading r;
     if (!goveeLatest(config.sensor, INTERVAL_MS, r)) return;
     time_t heardAt = time(nullptr) - (millis() - r.heardMs) / 1000;
-    queue.push_back({heardAt, r.celsius, r.humidity, r.battery, r.rssi});
+    queue.push_back({heardAt, r.celsius, r.humidity, r.battery, r.rssi,
+                     powerOnUsb() ? -1 : powerBatteryLevel()});
     if (queue.size() > MAX_QUEUE) queue.pop_front();
     sampled = true;
     lastSampleMs = millis();
@@ -92,10 +95,9 @@ static void sample() {
 static void upload() {
     size_t n = std::min(queue.size(), BATCH);
     JsonDocument doc;
-    // The kit reports its label and sensor with every upload: once deployed, the kit's settings
+    // The kit reports its instructor and sensor with every upload: once deployed, the kit's settings
     // are the source of truth for the server's record of it.
     JsonObject kit = doc["kit"].to<JsonObject>();
-    if (!config.course.isEmpty()) kit["course"] = config.course;
     if (!config.instructor.isEmpty()) kit["instructor"] = config.instructor;
     if (!config.sensor.isEmpty()) kit["sensor"] = config.sensor;
     JsonArray readings = doc["readings"].to<JsonArray>();
@@ -111,6 +113,7 @@ static void upload() {
         o["humidity"] = r.humidity;
         o["battery"] = r.battery;
         o["rssi"] = r.rssi;
+        if (r.kitBattery >= 0) o["kit_battery"] = r.kitBattery;
     }
     String body;
     serializeJson(doc, body);
