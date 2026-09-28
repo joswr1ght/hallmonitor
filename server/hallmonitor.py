@@ -12,6 +12,7 @@
     uv run hallmonitor.py list
     uv run hallmonitor.py backup state/backups --keep 7             # run nightly from cron
     uv run hallmonitor.py revoke 1
+    uv run hallmonitor.py delete-kit 1 --yes                        # the kit and all its readings
     uv run hallmonitor.py serve --port 8504
 """
 
@@ -344,6 +345,23 @@ def cmd_revoke(args) -> int:
     return 0
 
 
+def cmd_delete_kit(args) -> int:
+    with connect(args.db) as conn:
+        kit = conn.execute("SELECT course, instructor FROM kits WHERE id = ?", (args.kit_id,)).fetchone()
+        if kit is None:
+            print(f"kit {args.kit_id} not found", file=sys.stderr)
+            return 1
+        count = conn.execute("SELECT COUNT(*) FROM readings WHERE kit_id = ?", (args.kit_id,)).fetchone()[0]
+        if not args.yes:
+            print(f"kit {args.kit_id} ({kit[0]} / {kit[1]}) has {count} readings; rerun with --yes to delete them "
+                  "and the kit", file=sys.stderr)
+            return 1
+        conn.execute("DELETE FROM readings WHERE kit_id = ?", (args.kit_id,))
+        conn.execute("DELETE FROM kits WHERE id = ?", (args.kit_id,))
+    print(f"kit {args.kit_id} deleted with {count} readings")
+    return 0
+
+
 def cmd_set_kit(args) -> int:
     changes = {k: v for k, v in (("course", args.course), ("instructor", args.instructor),
                                  ("sensor", args.sensor)) if v is not None}
@@ -447,6 +465,11 @@ def main() -> int:
     p = sub.add_parser("revoke", help="revoke a kit's token")
     p.add_argument("kit_id", type=int)
     p.set_defaults(func=cmd_revoke)
+
+    p = sub.add_parser("delete-kit", help="delete a kit and all its readings")
+    p.add_argument("kit_id", type=int)
+    p.add_argument("--yes", action="store_true", help="confirm the deletion")
+    p.set_defaults(func=cmd_delete_kit)
 
     sub.add_parser("set-staff-password", help="set the shared staff password (prompts, or reads stdin)"
                    ).set_defaults(func=cmd_set_staff_password)

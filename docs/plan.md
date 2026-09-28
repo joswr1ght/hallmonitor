@@ -250,7 +250,7 @@ the server with `set-kit`. No per-event room assignment is needed.
 **Sensor identity**
 
 At a conference the kit may hear several Govee sensors through walls. The current script handles
-this with `--name-match Govee_H5074_C0A6`, and the kit can do the same thing: bind the sensor to
+this with `--name-match Govee_H5074_67B3`, and the kit can do the same thing: bind the sensor to
 the kit once, when the kit is assembled, by storing the sensor's Bluetooth address in the device
 record. The sensor and kit then travel together as a pair.
 
@@ -300,7 +300,12 @@ first because the board choice constrains the firmware, setup, and Wi-Fi design.
 
 ### Hardware
 
-**H1: Board (decided: M5StickC Plus2)**
+**H1: Board (decided: M5StickC Plus2; the prototype is an M5StickS3)**
+
+The Plus2 order arrived on 2026-09-28 as an M5StickS3: an ESP32-S3-N8R8 (8 MB flash, 8 MB PSRAM)
+with the same 1.14" 135x240 screen, a speaker instead of a buzzer, and the S3's built-in USB for
+serial. M5Unified supports it, so the firmware builds for both boards (`sticks3`, the default, and
+`stickc-plus2`).
 
 The board needs to support the setup portal (F1) as well as normal reporting. That sets these
 hardware requirements:
@@ -492,7 +497,7 @@ device heard in the last 15 minutes (address, model, signal strength, and latest
 sensor page then lists those devices immediately, without starting a new scan, which matters
 because the H5074 can go 93 seconds between advertisements.
 
-Each row shows the sensor's short name (for example `H5074_C0A6`), its signal strength, and its
+Each row shows the sensor's short name (for example `H5074_67B3`), its signal strength, and its
 current temperature and humidity, sorted strongest first. At a conference with sensors in
 neighboring rooms, two cues identify the right one: placing the sensor next to the kit puts it at
 the top of the list, and the live reading can be compared against the Govee app or the sensor's
@@ -533,18 +538,21 @@ path are the new ones.
 Done 2026-09-24, except moving Josh's class onto `--api` mode. Remaining steps:
 
 1. Verify the Govee connection end to end. With the H5074 nearby, run
-   `uv run hallclient.py scan` from `client/` and confirm `Govee_H5074_C0A6` appears with a decoded
+   `uv run hallclient.py scan` from `client/` and confirm `Govee_H5074_67B3` appears with a decoded
    reading. Then run `uv run hallclient.py run --once --api https://hallmonitor.willhackforsushi.com
-   --name-match Govee_H5074_C0A6` and confirm the reading appears on the SEC504 · Josh Wright page.
+   --name-match Govee_H5074_67B3` and confirm the reading appears on the SEC504 · Josh Wright page.
    The first attempt on 2026-09-24 heard no Govee devices because the sensor was not nearby.
-2. Open the staff page on a phone and confirm times render in the local time zone.
-3. Run the client with `--api` for a full class.
+   Done 2026-09-25: the Mac heard `Govee_H5074_67B3` and uploaded a reading to the server.
+2. Open the staff page on a phone and confirm times render in the local time zone. Done 2026-09-25
+   in a desktop browser, which showed the reading in PDT.
+3. Run the client with `--api` for a full class. Dropped 2026-09-28: the H5074 moved to the
+   prototype kit, which records the class instead, and kit 1 (the Mac) was deleted on the server.
 
 **Phase 2: prototype kit**
 
 Buy one M5StickC Plus2 and pair it with the existing H5074. Write firmware that reads the Govee
 over BLE, queues readings, joins the strongest known network, and uploads batches.
-Run it alongside the Mac for one full class and compare the two data sets.
+Run it for one full class.
 
 Decided (2026-09-24): the firmware uses the Arduino framework built with PlatformIO, with
 M5Unified for the screen, buttons, and RTC, NimBLE-Arduino for BLE, and ArduinoJson. The work
@@ -559,9 +567,15 @@ splits into milestones that can each be tested on the board:
 6. Over-the-air (OTA) updates, before Phase 3.
 
 Milestones 1 to 5 are written. The firmware compiles and `provision.py` passed a test against a
-simulated kit on a pseudo-terminal, but none of it has run on the board. The firmware leaves about
-500 bytes of instruction RAM (IRAM) free, so OTA updates (milestone 6) may need a newer Arduino
-core or an ESP-IDF build to make room.
+simulated kit on a pseudo-terminal. The Plus2 build leaves about 500 bytes of instruction RAM
+(IRAM) free, so OTA updates (milestone 6) on a Plus2 may need a newer Arduino core or an ESP-IDF
+build to make room.
+
+On the StickS3, 2026-09-28: the firmware flashed and showed the unconfigured status screen
+(milestone 1), and `sensors` over serial decoded `Govee_H5074_67B3` at 23.3°C and 57.6% (milestone
+2). Opening the serial port with DTR and RTS dropped put the kit in download mode; `provision.py`
+now leaves both asserted. The kit was then provisioned as kit 2 and uploaded readings to the
+server (milestones 3 and 4). The setup portal (milestone 5) is not yet tested on the board.
 
 **Phase 3: pilot with two or three instructors**
 

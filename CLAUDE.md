@@ -6,7 +6,8 @@ before starting work and update it when a decision changes.
 
 ## Decisions so far
 
-- Kit: M5StickC Plus2 plus a Govee BLE sensor (H5074 today) and a USB power supply. No wired sensor.
+- Kit: M5StickS3 (the M5StickC Plus2 order arrived as a StickS3; the firmware builds for both)
+  plus a Govee BLE sensor (H5074 today) and a USB power supply. No wired sensor.
 - Josh preconfigures and pairs each kit. Instructors change Wi-Fi networks and the paired sensor
   through the on-device setup portal (F1): hold the main button, the screen shows a QR code, the
   `hallmon-<kit ID>` network, its password, and `http://192.168.4.1`.
@@ -29,10 +30,9 @@ before starting work and update it when a decision changes.
 
 ## Next step
 
-Phase 1 in `docs/plan.md` is built and deployed; what remains is running Josh's class on
-`client/hallclient.py run --api`, starting with the Govee verification steps listed under Phase 1. Phase 2 (prototype kit) is in progress: firmware milestones 1 to 5 (including
-`firmware/provision.py` and the setup portal) are written and compile, but none has run on the
-M5StickC Plus2 yet. OTA is not started; IRAM has about 500 bytes free.
+Phase 1 in `docs/plan.md` is built, deployed, and verified. Phase 2 (prototype kit) is in progress
+on an M5StickS3 (kit 2): it is provisioned and uploading readings. The setup portal has not been
+tested on the board, and OTA is not started.
 
 ## Conventions
 

@@ -5,7 +5,7 @@
 #include <vector>
 
 struct GoveeReading {
-    String name;      // advertised local name, for example Govee_H5074_C0A6
+    String name;      // advertised local name, for example Govee_H5074_67B3
     String address;   // Bluetooth address, for example a4:c1:38:00:c0:a6
     float celsius = 0;
     float humidity = 0;

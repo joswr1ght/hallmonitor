@@ -84,6 +84,11 @@ Run admin commands on the server the same way:
 ssh hasborg 'cd hallmonitor && ~/.local/bin/uv run --script hallmonitor.py list'
 ```
 
+To remove a kit, use `delete-kit N --yes`, which deletes the kit and its readings together. Without
+`--yes`, it prints the kit and its reading count and changes nothing. Deleting a kit by hand in the
+`sqlite3` shell leaves its readings behind, since the shell does not enforce foreign keys unless
+`PRAGMA foreign_keys = ON` is run first.
+
 A cron job for `jwright` backs up the database every night at 3:17 AM (server time, US Eastern)
 with SQLite's online backup, which is safe while the server runs. It keeps the newest 7 copies in
 `state/backups/` and logs to `state/backups/backup.log`. The copies are on the same disk as the

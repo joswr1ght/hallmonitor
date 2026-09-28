@@ -19,7 +19,7 @@ struct KitConfig {
     String token;       // from the server's add-kit command
     String course;      // for example SEC504
     String instructor;  // for example Josh Wright
-    String sensor;      // the paired Govee sensor's name (Govee_H5074_C0A6) or Bluetooth address
+    String sensor;      // the paired Govee sensor's name (Govee_H5074_67B3) or Bluetooth address
     std::vector<Network> networks;
 };
 

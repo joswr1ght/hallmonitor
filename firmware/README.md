@@ -1,6 +1,6 @@
 # firmware
 
-Firmware for the hallmonitor kit: an M5StickC Plus2 paired with a Govee sensor. The kit reads the
+Firmware for the hallmonitor kit: an M5StickS3 (or M5StickC Plus2) paired with a Govee sensor. The kit reads the
 sensor over Bluetooth Low Energy (BLE), queues a reading every 5 minutes, joins the strongest known
 Wi-Fi network, and uploads batches to the server. The screen shows the current reading and the
 kit's status.
@@ -22,7 +22,8 @@ Build, flash over USB-C, and open the serial console from this directory:
 
 ```sh
 pio run                     # build only
-pio run -t upload           # build and flash the connected kit
+pio run -t upload           # build and flash the connected kit (a StickS3)
+pio run -e stickc-plus2 -t upload   # the same, for a Plus2
 pio device monitor          # serial console at 115200 baud
 ```
 
@@ -52,7 +53,7 @@ uv run provision.py --course SEC504 --instructor "Josh Wright"
 The script finds the kit on USB, flashes the firmware, creates the kit on the server with
 `add-kit` over SSH, and sends the kit its ID, token, label, and every network in `networks.json`.
 It then lists the Govee sensors the kit hears, strongest first, and asks which one to pair; pass
-`--sensor Govee_H5074_C0A6` to skip the question. Last, it reboots the kit and prints the kit ID to
+`--sensor Govee_H5074_67B3` to skip the question. Last, it reboots the kit and prints the kit ID to
 write on the kit and its sensor. The token goes from the server to the kit without being saved or
 shown anywhere else.
 
@@ -81,7 +82,7 @@ then paste one `config` line with the token
 that `add-kit` printed, and reboot:
 
 ```
-config {"kit_id": 1, "server": "https://hallmonitor.willhackforsushi.com", "token": "...", "course": "SEC504", "instructor": "Josh Wright", "sensor": "Govee_H5074_C0A6", "networks": [{"ssid": "SANS", "psk": "..."}]}
+config {"kit_id": 1, "server": "https://hallmonitor.willhackforsushi.com", "token": "...", "course": "SEC504", "instructor": "Josh Wright", "sensor": "Govee_H5074_67B3", "networks": [{"ssid": "SANS", "psk": "..."}]}
 reboot
 ```
 
@@ -144,9 +145,12 @@ instructor updates it in the portal again.
   survives a power pull while the RTC battery lasts.
 * **Queue.** Up to a week of readings wait in RAM while the kit is offline. A power pull loses
   readings that were not yet sent.
-* **IRAM.** The firmware leaves about 500 bytes of the ESP32's 128 KB instruction RAM free,
-  since the prebuilt Wi-Fi and BLE stacks use most of it. M5Unified's speaker driver did not fit,
-  so the portal beeps with Arduino's `tone()` on the buzzer pin. OTA updates may need a newer
-  Arduino core or an ESP-IDF build to make room.
+* **Serial reset on the StickS3.** The StickS3's USB port is the ESP32-S3's built-in USB serial.
+  Opening the port with DTR and RTS both dropped resets the kit into download mode, where it waits
+  for a flash. `provision.py` leaves both lines asserted, which does not reset it.
+* **IRAM on the Plus2.** The Plus2 build leaves about 500 bytes of the ESP32's 128 KB instruction
+  RAM free, since the prebuilt Wi-Fi and BLE stacks use most of it. M5Unified's speaker driver did
+  not fit, so the Plus2 build beeps with Arduino's `tone()` on the buzzer pin. The StickS3 build
+  uses M5Unified's speaker driver.
 * **Certificates.** The kit trusts ISRG Root X1 and X2. If Let's Encrypt moves the server to a root
   outside those two, uploads fail until the kit is reflashed with new roots.

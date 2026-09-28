@@ -73,7 +73,7 @@ a Wi-Fi drop delays the staff page instead of leaving a gap. The page still rend
 locally, but nothing is rsynced.
 
 Pin to one specific sensor when other Govee devices are in range — likely at a conference — by
-passing the full local name, for example `--name-match Govee_H5074_C0A6`.
+passing the full local name, for example `--name-match Govee_H5074_67B3`.
 
 ## How it works
 

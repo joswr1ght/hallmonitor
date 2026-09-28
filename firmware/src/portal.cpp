@@ -14,9 +14,11 @@ static const uint32_t IDLE_MS = 10 * 60 * 1000;
 static const uint32_t TEST_MS = 15 * 1000;
 // Longest course or instructor name the server accepts (MAX_LABEL in server/hallmonitor.py).
 static const size_t MAX_LABEL = 40;
-// The Plus2's passive buzzer. Arduino's tone() drives it directly; M5Unified's speaker driver
-// needs more IRAM than the firmware has left.
+#ifdef PLUS2_BUZZER
+// The Plus2's passive buzzer. Arduino's tone() drives it directly; on the Plus2, M5Unified's
+// speaker driver needs more IRAM than the firmware has left.
 static const int BUZZER_PIN = 2;
+#endif
 
 static DNSServer dns;
 static WebServer server(80);
@@ -290,7 +292,11 @@ static void handleDone() {
 
 void portalStart() {
     active = true;
+#ifdef PLUS2_BUZZER
     tone(BUZZER_PIN, 3000, 150);
+#else
+    M5.Speaker.tone(3000, 150);
+#endif
     apName = "hallmon-" + String(config.kitId);
     apPassword = randomPassword();
     // Leaving the venue network stops uploads; the kit restarts when the portal closes.

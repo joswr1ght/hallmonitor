@@ -33,7 +33,9 @@ void setup() {
     Serial.begin(115200);
     auto cfg = M5.config();
     cfg.serial_baudrate = 0;
+#ifdef PLUS2_BUZZER
     cfg.internal_spk = false;  // the portal drives the buzzer with tone() instead
+#endif
     M5.begin(cfg);
     loadConfig();
     displayBegin();

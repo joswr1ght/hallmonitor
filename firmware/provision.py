@@ -6,7 +6,7 @@
 """Provision a hallmonitor kit over USB: flash the firmware, create the kit on the server, and load its settings.
 
     uv run provision.py --course SEC504 --instructor "Josh Wright"      # a new kit
-    uv run provision.py --course SEC504 --instructor "Josh Wright" --sensor Govee_H5074_C0A6
+    uv run provision.py --course SEC504 --instructor "Josh Wright" --sensor Govee_H5074_67B3
     uv run provision.py --update                                        # resend networks.json to a kit
     uv run provision.py --update --instructor "Another Instructor"      # and change its label
 
@@ -67,14 +67,10 @@ class Kit:
     """The kit's serial command interface: one command per line, one line of JSON back."""
 
     def __init__(self, port: str) -> None:
-        self.serial = serial.Serial()
-        self.serial.port = port
-        self.serial.baudrate = 115200
-        self.serial.timeout = 0.5
-        # Opening the port with DTR or RTS asserted resets an ESP32 through its auto-reset circuit.
-        self.serial.dtr = False
-        self.serial.rts = False
-        self.serial.open()
+        # pyserial opens the port with DTR and RTS both asserted, which resets neither an ESP32's
+        # auto-reset circuit nor the ESP32-S3's built-in USB. Dropping either line can reset the kit,
+        # and on the S3, dropping them both leaves it waiting in download mode.
+        self.serial = serial.Serial(port, 115200, timeout=0.5)
 
     def command(self, line: str, timeout: float = REPLY_TIMEOUT):
         """Send one command and return its JSON reply, skipping boot messages and other output."""
