@@ -65,7 +65,9 @@ ssh hasborg 'cd hallmonitor && ~/.local/bin/uv run --script hallmonitor.py set-n
 
 The service runs as `jwright` from `/home/jwright/hallmonitor`, and the database lives in
 `/home/jwright/hallmonitor/state/`. The files in `deploy/` are the systemd unit and the port 80
-virtual host; certbot generated the matching `-le-ssl.conf` and the HTTPS redirect.
+virtual host; certbot generated the matching `-le-ssl.conf` and the HTTPS redirect. The
+`-le-ssl.conf` virtual host also sends `Header always set Strict-Transport-Security "max-age=31536000"`,
+added by hand after certbot ran.
 
 To deploy a new version, copy the script and restart the service:
 

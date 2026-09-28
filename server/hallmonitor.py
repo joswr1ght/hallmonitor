@@ -20,6 +20,7 @@ import argparse
 import getpass
 import hashlib
 import json
+import re
 import secrets
 import sqlite3
 import sys
@@ -255,7 +256,9 @@ def create_app(db_path: Path, secure_cookies: bool = True) -> Flask:
     def login():
         next_url = request.form.get("next", "/")
         # Only follow local paths, so the login form cannot bounce a staff member to another site.
-        if not next_url.startswith("/") or next_url.startswith("//"):
+        # Browsers drop tabs and newlines from URLs and read a backslash as a slash, so "/\t/host"
+        # and "/\host" both mean "//host"; allow only printable ASCII and no second slash of either kind.
+        if not re.fullmatch(r"/(?![/\\])[\x21-\x7e]*", next_url):
             next_url = "/"
         password_hash = get_setting(db(), "staff_password")
         if password_hash is None:
