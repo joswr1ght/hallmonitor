@@ -33,8 +33,8 @@ before starting work and update it when a decision changes.
 Phase 1 in `docs/plan.md` is built, deployed, and verified. Phase 2 (prototype kit) is in progress
 on an M5StickS3 (kit 1 since production was reset on 2026-09-28): it is provisioned and uploading
 readings. The setup portal starts on the board, but its pages are not yet tested, and OTA is not
-started. A battery run-down test and the week-on-battery goal are in H6 of `docs/plan.md`. User
-documentation lives in `docs/user-guide.md`.
+started. Kits run on USB power; the battery is a ride-through of about 1.5 hours (H6 in
+`docs/plan.md`). User documentation lives in `docs/user-guide.md`.
 
 ## Conventions
 

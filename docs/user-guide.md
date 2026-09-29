@@ -27,7 +27,9 @@ The kit joins the strongest SANS class network it knows, which does not have to 
 the course in that room. Nothing on the kit names the course; the staff page lists the kit by the
 instructor's name.
 
-The kit's battery lasts only a few hours, so the kit needs USB power for the whole class.
+The kit needs USB power for the whole class. Its battery lasts about an hour and a half, enough
+to move the kit or ride through a short unplug. When the battery runs out, the kit stops recording
+until it is plugged in again, and the staff page shows its last reading as stale.
 
 ## What the screen shows
 

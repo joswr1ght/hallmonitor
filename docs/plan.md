@@ -403,25 +403,29 @@ do; a model that requires a connection or the Govee cloud would not work with th
 
 The Grove port stays unused for now, and the wired sensor is out of scope.
 
-**H6: Power and placement (open; goal: a week on battery)**
+**H6: Power and placement (decided: USB power; the battery is a short ride-through)**
 
-Goal (2026-09-28): a kit charged to full lasts a full week of teaching on its battery, six days or
-144 hours. How to get there is not decided. A run-down test of the current firmware from a full
-charge comes first, and its result picks the approach below.
+Decided (2026-09-28): the kit runs on USB power for the whole class, and the battery only carries
+it through a short unplug, about an hour and a half. An earlier goal was a week on battery. The
+approaches that reach it read or upload less often, which defeats the kit's main job: when an
+instructor reports a cold room and a manager asks the venue to adjust it, staff watch the room
+recover on the staff page, and that needs a fresh reading every few minutes. The research below
+is kept for reference.
 
-Until then the kit needs USB power for the whole class. The kit needs a USB power supply and a
+*Run-down test (2026-09-28).* From a full charge, with the current always-on firmware, the kit ran
+for about 1 hour 25 minutes on battery (first battery reading 21:59 UTC at 95%, last 23:24 UTC at
+1%) and uploaded every 5 minutes until it died. That is an average of roughly 170 mA if the full
+250 mAh was usable, about twice the published-figure estimate below.
+
+The kit needs USB power for the whole class. The kit needs a USB power supply and a
 cable long enough to reach an outlet from wherever it sits, and it should be somewhere it will not
 be unplugged for a laptop charger. The Govee should stay within reliable Bluetooth range of the
 kit; the current measurements at a few meters are the only data so far.
 
 *The budget.* The StickS3 has a 250 mAh battery, so 144 hours allows an average draw of about
 1.7 mA. The current firmware keeps Wi-Fi connected, scans for BLE half the time, and keeps the
-screen on. Published figures put that at roughly 60 to 90 mA, or 3 to 4 hours; this is an
-estimate, not a measurement.
-
-*The run-down test.* Charge the kit to full, unplug it, and leave it running. Each upload carries
-the kit's own battery level (`kit_battery`), so the server records the discharge curve, and the
-last upload marks the runtime.
+screen on. Published figures put that at roughly 60 to 90 mA, or 3 to 4 hours; the run-down test
+above measured half that runtime.
 
 *What the research found (2026-09-28):*
 
@@ -450,7 +454,7 @@ last upload marks the runtime.
   seconds there; an hour's worth would take far less. How much the connections drain the H5074's
   coin cell is not measured.
 
-*Candidate approaches (not decided):*
+*Approaches considered for a week on battery (not pursued):*
 
 1. Two modes chosen by USB power: plugged in, the kit runs as it does now; on battery, it switches
    to a battery-saver mode. The classroom experience stays the same while the kit is plugged in.
